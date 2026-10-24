@@ -39,19 +39,26 @@ trait HasAtomicCache
      */
     public function cache(
         string $method,
-        array $args,
-        Closure $callback,
+        array $args = [],
+        ?Closure $callback = null,
         ?int $ttl = null,
         bool|array|null $perUserOrTags = null,
-        bool $lock = false
+        bool $lock = false,
+        array $arguments = [],
+        array $customTags = []
     ): mixed {
+        $actualArgs = !empty($arguments) ? $arguments : $args;
+        $actualCallback = $callback;
+        if ($actualCallback === null) {
+            throw new \InvalidArgumentException("[AtomicCache] Callback closure is required.");
+        }
         if (property_exists($this, 'cachingEnabled') && $this->cachingEnabled === false) {
             return $callback();
         }
 
         $effectiveTtl = $ttl ?? (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
         $resource = $this->getCacheResource();
-        $safeArgs = $this->normalizeArguments($args);
+        $safeArgs = $this->normalizeArguments($actualArgs);
 
         // Include HTTP query parameters (e.g. ?page=2&filter=active) so paginated and filtered queries cache distinct results
         if ($this->shouldIncludeRequestQuery()) {
@@ -63,7 +70,7 @@ trait HasAtomicCache
 
         // Handle 5th argument: can be boolean $perUser or explicit array $tags
         $isPerUser = false;
-        $effectiveTags = [$resource];
+        $effectiveTags = !empty($customTags) ? $customTags : [$resource];
 
         if (is_bool($perUserOrTags)) {
             $isPerUser = $perUserOrTags;
@@ -83,29 +90,50 @@ trait HasAtomicCache
 
         return $cache->remember(
             $cacheKey,
+            $actualCallback,
+            $effectiveTtl,
+            lock: $lock
+        );
+    }
+    /**
+     * Cache an ad-hoc custom key with optional tags and atomic lock protection.
+     */
+    public function rememberCache(
+        string $key,
+        Closure $callback,
+        ?int $ttl = null,
+        array $tags = [],
+        bool $lock = false
+    ): mixed {
+        $effectiveTtl = $ttl ?? (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
+        $effectiveTags = !empty($tags) ? $tags : [$this->getCacheResource()];
+
+        return AtomicCache::tags($effectiveTags)->remember(
+            $key,
             $callback,
             $effectiveTtl,
             lock: $lock
         );
     }
 
+
     /**
      * Cache a single resource item by ID with isolated item tag.
      */
-    public function cacheItem(int|string $id, Closure $callback, ?int $ttl = null): mixed
+    public function cacheItem(int|string $id, Closure $actualCallback, ?int $ttl = null): mixed
     {
         $resource = $this->getCacheResource();
         $cacheKey = "{$resource}:{$id}";
         $tags = ["{$resource}:{$id}"];
 
-        return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
+        return AtomicCache::tags($tags)->remember($cacheKey, $actualCallback, $ttl);
     }
 
     /**
      * Cache a collection or list query with collection tag.
      * Automatically isolates paginated and filtered query results based on HTTP query parameters.
      */
-    public function cacheCollection(string $key, Closure $callback, ?int $ttl = null, array $extraArgs = []): mixed
+    public function cacheCollection(string $key, Closure $actualCallback, ?int $ttl = null, array $extraArgs = []): mixed
     {
         $resource = $this->getCacheResource();
         $safeArgs = $this->normalizeArguments($extraArgs);
@@ -118,7 +146,7 @@ trait HasAtomicCache
         $cacheKey = "{$resource}:list:{$key}{$queryHash}";
         $tags = [$resource];
 
-        return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
+        return AtomicCache::tags($tags)->remember($cacheKey, $actualCallback, $ttl);
     }
 
     /**
