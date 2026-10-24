@@ -19,6 +19,7 @@ class AtomicCache
     protected ?int $lockSeconds = null;
     protected ?int $waitSeconds = null;
     protected ?int $targetUserId = null;
+    protected ?float $customJitter = null;
 
     public function __construct(?string $store = null)
     {
@@ -78,6 +79,17 @@ class AtomicCache
     }
 
     /**
+     * Apply random TTL jitter (variance) to prevent simultaneous expiry (thundering herd).
+     * Pass 0.05 for ±5%, or omit to use configured default percentage.
+     */
+    public function withJitter(?float $percentage = null): self
+    {
+        $clone = clone $this;
+        $clone->customJitter = $percentage ?? ((float) config('atomic-cache.jitter.percentage', 5) / 100);
+        return $clone;
+    }
+
+    /**
      * Normalize arguments for remember method.
      * Supports both (key, ttl, callback) and (key, callback, ttl).
      */
@@ -115,7 +127,7 @@ class AtomicCache
             return $callback();
         }
 
-        $ttl = $this->customTtl ?? $customTtl ?? config('atomic-cache.default_ttl', 3600);
+        $ttl = $this->calculateTtl($customTtl);
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $shouldLock = $this->useLock || $lock || config('atomic-cache.stampede.enabled', false);
 
@@ -203,7 +215,7 @@ class AtomicCache
             return false;
         }
 
-        $ttl = $this->customTtl ?? $ttl ?? config('atomic-cache.default_ttl', 3600);
+        $ttl = $this->calculateTtl($ttl);
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $store = $this->getRawStore();
         $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
@@ -445,6 +457,28 @@ class AtomicCache
         $parts[] = $key;
 
         return implode(':', $parts);
+    }
+
+    /**
+     * Calculate effective TTL with optional jitter applied.
+     */
+    protected function calculateTtl(?int $ttl): int
+    {
+        $baseTtl = $this->customTtl ?? $ttl ?? config('atomic-cache.default_ttl', 3600);
+        $jitterEnabled = $this->customJitter !== null || config('atomic-cache.jitter.enabled', false);
+
+        if (!$jitterEnabled || $baseTtl <= 10) {
+            return $baseTtl;
+        }
+
+        $percentage = $this->customJitter ?? ((float) config('atomic-cache.jitter.percentage', 5) / 100);
+        $delta = (int) round($baseTtl * $percentage);
+
+        if ($delta < 1) {
+            return $baseTtl;
+        }
+
+        return max(1, $baseTtl + random_int(-$delta, $delta));
     }
 
     /**

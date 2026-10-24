@@ -2,7 +2,10 @@
 
 namespace KaziOmar\AtomicCache;
 
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
+use KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper;
+use KaziOmar\AtomicCache\Commands\ClearAtomicCacheCommand;
 
 class AtomicCacheServiceProvider extends ServiceProvider
 {
@@ -32,6 +35,26 @@ class AtomicCacheServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../config/atomic-cache.php' => config_path('atomic-cache.php'),
             ], 'atomic-cache-config');
+
+            $this->commands([
+                ClearAtomicCacheCommand::class,
+            ]);
         }
+
+        $this->registerBladeDirectives();
+    }
+
+    /**
+     * Register Blade directives for template fragment caching.
+     */
+    protected function registerBladeDirectives(): void
+    {
+        Blade::directive('atomicCache', function ($expression) {
+            return "<?php if (\\KaziOmar\\AtomicCache\\Blade\\AtomicCacheBladeHelper::setUp({$expression})): ?>";
+        });
+
+        Blade::directive('endAtomicCache', function () {
+            return "<?php echo \\KaziOmar\\AtomicCache\\Blade\\AtomicCacheBladeHelper::tearDown(); endif; ?>";
+        });
     }
 }

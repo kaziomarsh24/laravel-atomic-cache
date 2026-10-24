@@ -88,4 +88,18 @@ return [
         'enabled' => env('ATOMIC_CACHE_SELF_HEALING', true),
         'log_corrupted' => env('ATOMIC_CACHE_LOG_CORRUPTED', true),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cache TTL Jitter (Thundering Herd Prevention)
+    |--------------------------------------------------------------------------
+    |
+    | Adds a small random variance (percentage) to cache TTLs so that multiple
+    | keys created together do not expire at the exact same second.
+    |
+    */
+    'jitter' => [
+        'enabled' => env('ATOMIC_CACHE_JITTER_ENABLED', false),
+        'percentage' => env('ATOMIC_CACHE_JITTER_PERCENTAGE', 5), // ±5%
+    ],
 ];

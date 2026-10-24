@@ -91,9 +91,32 @@ $settings = AtomicCache::rememberForUser('settings', function () {
 $profile = AtomicCache::rememberForUser('profile', fn() => User::find(10), userId: 10);
 ```
 
-### 4. Clearing Cache
+### 4. Cache TTL Jitter (Thundering Herd Protection)
 
-You can clear individual keys or tags cleanly:
+Prevent multiple keys created at the same time from expiring in the exact same microsecond:
+
+```php
+// Adds a small random variance (e.g. ±5%) to the TTL
+AtomicCache::withJitter()->remember('popular_data', fn() => heavyQuery(), 3600);
+```
+
+### 5. Blade Fragment Caching (`@atomicCache`)
+
+Cache expensive HTML blocks or navigation components directly in Blade templates:
+
+```blade
+@atomicCache('sidebar_categories', 3600)
+    <div class="sidebar">
+        @foreach(\App\Models\Category::all() as $category)
+            <p>{{ $category->name }}</p>
+        @endforeach
+    </div>
+@endAtomicCache
+```
+
+### 6. Clearing Cache & Artisan Command
+
+You can clear individual keys, model items, or tags:
 
 ```php
 // Clear a single key
@@ -107,6 +130,16 @@ AtomicCache::clearCollection('posts');
 
 // Clear multiple tags
 AtomicCache::clearTags(['posts', 'comments']);
+```
+
+Or clear from terminal using the built-in Artisan command:
+
+```bash
+# Clear a specific tag or key
+php artisan atomic-cache:clear users
+
+# Clear all cache entries
+php artisan atomic-cache:clear --all
 ```
 
 ---

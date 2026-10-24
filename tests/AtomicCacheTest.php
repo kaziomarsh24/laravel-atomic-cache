@@ -232,4 +232,44 @@ class AtomicCacheTest extends TestCase
         $this->assertEquals('computed_2', $val2);
         $this->assertEquals(2, $count);
     }
+
+    public function test_ttl_jitter_calculates_within_expected_variance(): void
+    {
+        // Using withJitter(0.1) on 1000s should keep TTL between 900s and 1100s
+        $data = AtomicCache::withJitter(0.1)->remember('jitter_test', fn() => 'jitter_val', 1000);
+        $this->assertEquals('jitter_val', $data);
+        $this->assertEquals('jitter_val', AtomicCache::get('jitter_test'));
+    }
+
+    public function test_blade_helper_caches_html_fragments(): void
+    {
+        $key = 'blade_block_' . uniqid();
+
+        // 1. First run: cache miss, setUp returns true
+        $shouldRender = \KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper::setUp($key, 60);
+        $this->assertTrue($shouldRender);
+
+        echo '<p>Rendered HTML Content</p>';
+        $output = \KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper::tearDown();
+        $this->assertEquals('<p>Rendered HTML Content</p>', $output);
+
+        // 2. Second run: cache hit, setUp outputs cached content and returns false
+        ob_start();
+        $shouldRenderAgain = \KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper::setUp($key, 60);
+        $cachedOutput = ob_get_clean();
+
+        $this->assertFalse($shouldRenderAgain);
+        $this->assertEquals('<p>Rendered HTML Content</p>', $cachedOutput);
+    }
+
+    public function test_artisan_command_clears_atomic_cache(): void
+    {
+        AtomicCache::put('cmd_key', 'cmd_value', 60);
+        $this->assertEquals('cmd_value', AtomicCache::get('cmd_key'));
+
+        $this->artisan('atomic-cache:clear', ['tag' => 'cmd_key'])
+            ->assertSuccessful();
+
+        $this->assertNull(AtomicCache::get('cmd_key'));
+    }
 }
