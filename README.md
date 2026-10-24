@@ -36,7 +36,7 @@ This package wraps standard cache operations with:
 You can install the package via composer:
 
 ```bash
-composer require thekaziomar/laravel-atomic-cache
+composer require kaziomarsh24/laravel-atomic-cache
 ```
 
 Optionally publish the config file:
@@ -253,7 +253,7 @@ composer test
 
 ## Credits
 
-- **Kazi Omar Faruk** ([@thekaziomar](https://github.com/thekaziomar))
+- **Kazi Omar Faruk** ([@kaziomarsh24](https://github.com/kaziomarsh24))
 
 ## License
 
