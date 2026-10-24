@@ -1,0 +1,60 @@
+{
+    "name": "kaziomarsh24/laravel-atomic-cache",
+    "description": "High-performance, stampede-proof, tag-aware caching engine for Laravel with auto-compression, self-healing, and model lifecycle invalidation.",
+    "keywords": [
+        "laravel",
+        "cache",
+        "atomic",
+        "stampede-protection",
+        "compression",
+        "tagging",
+        "redis"
+    ],
+    "homepage": "https://github.com/kaziomarsh24/laravel-atomic-cache",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Kazi Omar Sharif",
+            "email": "kaziomarsh24@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.2 || ^8.3 || ^8.4 || ^8.5",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0",
+        "illuminate/cache": "^10.0 || ^11.0 || ^12.0",
+        "illuminate/database": "^10.0 || ^11.0 || ^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0",
+        "phpunit/phpunit": "^10.0 || ^11.0"
+    },
+    "suggest": {
+        "ext-zlib": "Required for payload gzip compression on large cache items."
+    },
+    "autoload": {
+        "psr-4": {
+            "KaziOmar\\AtomicCache\\": "src/"
+        },
+        "files": [
+            "src/Helpers/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "KaziOmar\\AtomicCache\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "KaziOmar\\AtomicCache\\AtomicCacheServiceProvider"
+            ],
+            "aliases": {
+                "AtomicCache": "KaziOmar\\AtomicCache\\Facades\\AtomicCache"
+            }
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
