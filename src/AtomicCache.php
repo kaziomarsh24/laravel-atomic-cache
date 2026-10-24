@@ -92,7 +92,6 @@ class AtomicCache
 
         $ttl = $this->customTtl ?? $ttl ?? config('atomic-cache.default_ttl', 3600);
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
-        $key = $this->formatKey($key);
         $shouldLock = $this->useLock || $lock || config('atomic-cache.stampede.enabled', false);
 
         if ($shouldLock) {
@@ -272,7 +271,7 @@ class AtomicCache
         $store = $this->getRawStore();
         $lockSeconds = $this->lockSeconds ?? config('atomic-cache.stampede.lock_seconds', 10);
         $waitSeconds = $this->waitSeconds ?? config('atomic-cache.stampede.wait_seconds', 5);
-        $lockKey = "lock:{$key}";
+        $lockKey = 'lock:' . $this->formatKey($key);
 
         if (method_exists($store, 'lock')) {
             try {
