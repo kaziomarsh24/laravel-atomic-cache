@@ -1,35 +1,45 @@
-# Laravel Atomic Cache ⚡
+# Laravel Atomic Cache
 
-[![Latest Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/kaziomarsh24/laravel-atomic-cache)
-[![PHP Version](https://img.shields.io/badge/PHP-8.2%20|%208.3%20|%208.4-777BB4.svg)](https://php.net)
-[![Laravel Support](https://img.shields.io/badge/Laravel-10.x%20|%2011.x%20|%2012.x-FF2D20.svg)](https://laravel.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+A simple, stampede-proof caching package for Laravel with automatic compression and clean model invalidation.
 
-A high-performance, stampede-proof, tag-aware caching engine for Laravel. Designed for modern web applications handling large payloads, concurrent bursts, and complex multi-table model invalidations.
+```php
+use KaziOmar\AtomicCache\Facades\AtomicCache;
 
----
+// Standard caching with auto-compression
+$users = AtomicCache::remember('users.active', fn() => User::where('active', 1)->get());
 
-## 🌟 Why Laravel Atomic Cache?
-
-| Feature | Standard Laravel Cache | Laravel Atomic Cache |
-| :--- | :--- | :--- |
-| **Stampede Protection** | ❌ All concurrent requests hit DB | ✅ **Atomic lock** (single worker computes, others wait) |
-| **Large Payload Size** | ❌ Raw uncompressed serialization | ✅ **Auto Gzip compression** (>50KB reduces Redis RAM by ~70%) |
-| **Cache Tag Safety** | ❌ Crashes on File/Database stores | ✅ **Graceful fallback** without throwing exceptions |
-| **Corrupted Data** | ❌ Throws crash exception to user | ✅ **Self-Healing** (cleans key, re-computes silently) |
-| **Model Invalidation** | ❌ Manual or fragile observers | ✅ **Auto DB::afterCommit** hook (prevents race conditions) |
-| **Tag Granularity** | ⚠️ Manually managed | ✅ Separates Single Item (`users:12`) vs Collection (`users`) |
-| **Per-User Scoping** | ⚠️ Boilerplate `key . Auth::id()` | ✅ Built-in `rememberForUser()` |
+// Cache stampede protection (atomic lock so heavy queries don't hit DB concurrently)
+$report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::generate());
+```
 
 ---
 
-## 📦 Installation
+## Why use this?
+
+Laravel's default cache works great, but in real-world apps you often run into a few common problems:
+
+1. **Cache Stampede:** When a popular cache key expires, dozens of requests hit your database at the exact same second trying to recalculate it.
+2. **Huge Redis Memory Usage:** Large collections or API responses take up a ton of RAM if stored uncompressed.
+3. **Broken Tag Support:** If you ever switch from Redis to Database or File driver, any `Cache::tags()` call immediately crashes with an exception.
+4. **Stale Cache on Model Changes:** Manually clearing cache across controllers and observers easily leads to race conditions.
+
+This package wraps standard cache operations with:
+- **Atomic locks** to prevent stampedes (only 1 process runs the query, other requests wait for the result).
+- **Auto Gzip compression** on payloads over 50 KB (saving ~70% memory).
+- **Safe tagging** that works on Redis and won't crash on File or Database drivers.
+- **Model auto-invalidation** that waits for the database transaction to commit before flushing tags.
+
+---
+
+## Installation
+
+You can install the package via composer:
 
 ```bash
 composer require kaziomarsh24/laravel-atomic-cache
 ```
 
-Publish the optional configuration file:
+Optionally publish the config file:
 
 ```bash
 php artisan vendor:publish --tag="atomic-cache-config"
@@ -37,58 +47,73 @@ php artisan vendor:publish --tag="atomic-cache-config"
 
 ---
 
-## 🚀 Quick Start (Super Simple Function Names)
+## Usage
 
-### 1. Basic Remember
-Works just like Laravel's native cache, but with built-in compression and self-healing:
+### 1. Basic Caching
+
+Works like the normal Laravel cache helper, but automatically handles compression for large arrays/objects:
 
 ```php
 use KaziOmar\AtomicCache\Facades\AtomicCache;
 
-$users = AtomicCache::remember('active_users', fn() => User::where('is_active', true)->get());
-```
-
-### 2. Stampede-Protected Remember (`rememberWithLock`)
-When a key expires or is missing during high traffic, only **one** process runs the query while other requests wait up to 5 seconds and read the fresh result:
-
-```php
-$analytics = AtomicCache::rememberWithLock('dashboard_stats', function () {
-    return HeavyReportService::generate();
+$posts = AtomicCache::remember('posts.all', function () {
+    return Post::all();
 }, ttl: 3600);
 ```
 
-### 3. User-Scoped Cache (`rememberForUser`)
-Automatically scopes the cache key to the currently authenticated user (or a custom user ID):
+You can also use the global helper:
 
 ```php
-// Cached specifically for auth()->id()
-$notifications = AtomicCache::rememberForUser('user_menu', function () {
-    return Auth::user()->menuPreferences();
-});
-
-// Or specify an explicit user ID
-$profile = AtomicCache::rememberForUser('profile', fn() => User::find(42), userId: 42);
+$posts = atomic_cache('posts.all', fn() => Post::all(), 3600);
 ```
 
-### 4. Tag-Aware Invalidation (`clearItem` & `clearCollection`)
-Safe across all cache drivers. If Redis/Memcached is used, native tags are flushed. If File/Database driver is used, it handles it safely without crashing!
+### 2. Preventing Cache Stampede (`rememberWithLock`)
+
+Use `rememberWithLock` on heavy queries or dashboards. If the cache is empty or expired, only the first request runs the callback while concurrent requests wait up to 5 seconds to read the newly cached data:
 
 ```php
-// Clear a single item: tag "users:42"
-AtomicCache::clearItem('users', 42);
+$analytics = AtomicCache::rememberWithLock('dashboard.stats', function () {
+    return Analytics::calculate();
+}, ttl: 3600);
+```
 
-// Clear the entire collection: tag "users"
-AtomicCache::clearCollection('users');
+### 3. Per-User Caching (`rememberForUser`)
 
-// Clear custom tags
-AtomicCache::clearTags(['dashboard', 'reports']);
+Automatically prefixes the cache key with the authenticated user ID (or a passed ID):
+
+```php
+// Cached for auth()->id()
+$settings = AtomicCache::rememberForUser('settings', function () {
+    return Auth::user()->settings;
+});
+
+// Or pass an explicit user ID
+$profile = AtomicCache::rememberForUser('profile', fn() => User::find(10), userId: 10);
+```
+
+### 4. Clearing Cache
+
+You can clear individual keys or tags cleanly:
+
+```php
+// Clear a single key
+AtomicCache::clear('posts.all');
+
+// Clear a specific model item (flushes tag "posts:5")
+AtomicCache::clearItem('posts', 5);
+
+// Clear an entire collection tag (flushes tag "posts")
+AtomicCache::clearCollection('posts');
+
+// Clear multiple tags
+AtomicCache::clearTags(['posts', 'comments']);
 ```
 
 ---
 
-## 🧩 Eloquent Model Auto-Invalidation (`AutoClearsCache`)
+## Auto-Clearing Cache on Eloquent Models
 
-Add the `AutoClearsCache` trait to any Eloquent model. Whenever a record is created, updated, or deleted, its cache tags are automatically cleared **after the active database transaction commits** (preventing race conditions):
+Add the `AutoClearsCache` trait to your models. Whenever a model is saved or deleted, its related cache tags are cleared **only after the database transaction successfully commits**:
 
 ```php
 namespace App\Models;
@@ -96,26 +121,25 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use KaziOmar\AtomicCache\Traits\AutoClearsCache;
 
-class User extends Model
+class Post extends Model
 {
     use AutoClearsCache;
 
-    // Optional: automatically clear related tags whenever a user changes
-    protected array $relatedCacheTags = ['dashboard', 'admin_stats'];
+    // Optional: also clear related tags when a post changes
+    protected array $relatedCacheTags = ['home_feed', 'trending_posts'];
 }
 ```
 
-Now, whenever `$user->update(...)` runs:
-1. It waits for `DB::commit()`.
-2. Automatically invalidates tag `users:42` (single item).
-3. Automatically invalidates tag `users` (collection).
-4. Automatically invalidates tag `dashboard` & `admin_stats`.
+When `$post->save()` runs:
+- Clears item tag: `posts:{id}`
+- Clears list tag: `posts`
+- Clears extra tags: `home_feed`, `trending_posts`
 
 ---
 
-## 🏗️ Service / Repository Integration (`HasAtomicCache`)
+## Using in Services / Repositories
 
-Use `HasAtomicCache` in your services or repositories to standardize your caching logic with zero boilerplate:
+Add `HasAtomicCache` to clean up your service layer:
 
 ```php
 namespace App\Services;
@@ -127,25 +151,21 @@ class UserService
 {
     use HasAtomicCache;
 
-    // Optional: override default resource name (defaults to table/plural class name)
-    protected string $cacheResource = 'users';
-
-    public function findUser(int $id)
+    public function find(int $id)
     {
         return $this->cacheItem($id, fn() => User::findOrFail($id));
     }
 
-    public function getActiveUsers()
+    public function getActive()
     {
-        return $this->cacheCollection('active', fn() => User::where('is_active', true)->get());
+        return $this->cacheCollection('active', fn() => User::where('active', 1)->get());
     }
 
-    public function updateUser(int $id, array $data)
+    public function update(int $id, array $data)
     {
         $user = User::findOrFail($id);
         $user->update($data);
 
-        // Clear both single item and list caches
         $this->clearItemCache($id);
         $this->clearCollectionCache();
 
@@ -156,34 +176,33 @@ class UserService
 
 ---
 
-## ⚙️ Configuration (`config/atomic-cache.php`)
+## Configuration
+
+If you published `config/atomic-cache.php`, you can adjust defaults:
 
 ```php
 return [
-    // Master switch to toggle caching (great for local tests)
+    // Enable or disable caching (useful to turn off during testing)
     'enabled' => env('ATOMIC_CACHE_ENABLED', true),
 
     // Default TTL in seconds (1 hour)
     'default_ttl' => env('ATOMIC_CACHE_DEFAULT_TTL', 3600),
 
-    // Specific cache store (null = default Laravel store)
-    'store' => env('ATOMIC_CACHE_STORE', null),
-
-    // Stampede distributed lock settings
+    // Lock timings for stampede protection
     'stampede' => [
         'enabled' => env('ATOMIC_CACHE_STAMPEDE_ENABLED', true),
         'lock_seconds' => 10,
         'wait_seconds' => 5,
     ],
 
-    // Automatic payload compression for items > 50KB
+    // Automatic compression settings
     'compression' => [
         'enabled' => env('ATOMIC_CACHE_COMPRESSION_ENABLED', true),
         'threshold' => 51200, // 50 KB
         'level' => 6,
     ],
 
-    // Self-healing from corrupted cache data
+    // If corrupted cache data is found, purge it and re-calculate silently
     'self_healing' => [
         'enabled' => true,
         'log_corrupted' => true,
@@ -193,20 +212,16 @@ return [
 
 ---
 
-## 🧪 Global Helper Function
+## Testing
 
-You can also use the handy `atomic_cache()` helper:
-
-```php
-// Quick remember
-$stats = atomic_cache('daily_stats', fn() => calculate(), 3600);
-
-// Fluent chaining
-$data = atomic_cache()->tags(['orders'])->withLock()->remember('recent', fn() => ...);
+```bash
+composer test
 ```
 
----
+## Credits
 
-## 📄 License
+- **Kazi Omar Faruk** ([@kaziomarsh24](https://github.com/kaziomarsh24))
 
-Laravel Atomic Cache is open-sourced software licensed under the [MIT license](LICENSE).
+## License
+
+The MIT License (MIT). Please see [License File](LICENSE) for more information.

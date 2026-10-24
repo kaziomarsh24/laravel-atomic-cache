@@ -3,6 +3,7 @@
 namespace KaziOmar\AtomicCache;
 
 use Closure;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -77,20 +78,44 @@ class AtomicCache
     }
 
     /**
+     * Normalize arguments for remember method.
+     * Supports both (key, ttl, callback) and (key, callback, ttl).
+     */
+    protected function normalizeRememberArgs(mixed $arg2, mixed $arg3): array
+    {
+        if ($arg2 instanceof Closure) {
+            $callback = $arg2;
+            $ttl = is_int($arg3) ? $arg3 : null;
+        } elseif ($arg3 instanceof Closure) {
+            $callback = $arg3;
+            $ttl = is_int($arg2) ? $arg2 : null;
+        } else {
+            throw new \InvalidArgumentException("[AtomicCache] remember requires a Closure callback.");
+        }
+
+        return [$callback, $ttl];
+    }
+
+    /**
      * Get or compute a cached value.
+     * Supports both:
+     * - remember($key, 3600, fn() => ...)
+     * - remember($key, fn() => ..., 3600)
      */
     public function remember(
         string $key,
-        Closure $callback,
-        ?int $ttl = null,
+        mixed $ttlOrCallback,
+        mixed $callbackOrTtl = null,
         array $tags = [],
         bool $lock = false
     ): mixed {
+        [$callback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl);
+
         if (!config('atomic-cache.enabled', true)) {
             return $callback();
         }
 
-        $ttl = $this->customTtl ?? $ttl ?? config('atomic-cache.default_ttl', 3600);
+        $ttl = $this->customTtl ?? $customTtl ?? config('atomic-cache.default_ttl', 3600);
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $shouldLock = $this->useLock || $lock || config('atomic-cache.stampede.enabled', false);
 
@@ -114,14 +139,16 @@ class AtomicCache
      */
     public function rememberWithLock(
         string $key,
-        Closure $callback,
-        ?int $ttl = null,
+        mixed $ttlOrCallback,
+        mixed $callbackOrTtl = null,
         array $tags = [],
         ?int $lockSeconds = null,
         ?int $waitSeconds = null
     ): mixed {
+        [$callback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl);
+
         return $this->withLock($lockSeconds, $waitSeconds)
-            ->remember($key, $callback, $ttl, $tags, true);
+            ->remember($key, $callback, $customTtl, $tags, true);
     }
 
     /**
@@ -129,13 +156,15 @@ class AtomicCache
      */
     public function rememberForUser(
         string $key,
-        Closure $callback,
-        ?int $ttl = null,
+        mixed $ttlOrCallback,
+        mixed $callbackOrTtl = null,
         int|string|null $userId = null,
         array $tags = []
     ): mixed {
+        [$callback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl);
+
         return $this->forUser($userId)
-            ->remember($key, $callback, $ttl, $tags);
+            ->remember($key, $callback, $customTtl, $tags);
     }
 
     /**
@@ -148,19 +177,20 @@ class AtomicCache
         }
 
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
-        $formattedKey = $this->formatKey($key);
+        $store = $this->getRawStore();
+        $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
         $repository = $this->getRepository($tags);
 
         try {
-            $raw = $repository->get($formattedKey);
+            $raw = $repository->get($effectiveKey);
 
             if ($raw === null) {
                 return value($default);
             }
 
-            return $this->unpackPayload($raw, $formattedKey, $tags);
+            return $this->unpackPayload($raw, $effectiveKey, $tags);
         } catch (Throwable $e) {
-            return $this->handleCorruptedCache($formattedKey, $tags, $e, $default);
+            return $this->handleCorruptedCache($effectiveKey, $tags, $e, $default);
         }
     }
 
@@ -175,17 +205,52 @@ class AtomicCache
 
         $ttl = $this->customTtl ?? $ttl ?? config('atomic-cache.default_ttl', 3600);
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
-        $formattedKey = $this->formatKey($key);
+        $store = $this->getRawStore();
+        $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
         $packed = $this->packPayload($value);
 
         $repository = $this->getRepository($tags);
 
         try {
-            return $repository->put($formattedKey, $packed, $ttl);
+            return $repository->put($effectiveKey, $packed, $ttl);
         } catch (Throwable $e) {
-            Log::warning("[AtomicCache] Failed to put key '{$formattedKey}': " . $e->getMessage());
+            Log::warning("[AtomicCache] Failed to put key '{$effectiveKey}': " . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Determine if an item exists in the cache.
+     */
+    public function has(string $key, array $tags = []): bool
+    {
+        $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
+        $store = $this->getRawStore();
+        $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
+
+        try {
+            return $this->getRepository($tags)->has($effectiveKey);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Store an item permanently in the cache.
+     */
+    public function forever(string $key, mixed $value, array $tags = []): bool
+    {
+        return $this->put($key, $value, 315360000, $tags);
+    }
+
+    /**
+     * Retrieve and delete an item from the cache.
+     */
+    public function pull(string $key, mixed $default = null, array $tags = []): mixed
+    {
+        $value = $this->get($key, $default, $tags);
+        $this->forget($key, $tags);
+        return $value;
     }
 
     /**
@@ -194,12 +259,13 @@ class AtomicCache
     public function forget(string $key, array $tags = []): bool
     {
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
-        $formattedKey = $this->formatKey($key);
+        $store = $this->getRawStore();
+        $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
 
         try {
-            return $this->getRepository($tags)->forget($formattedKey);
+            return $this->getRepository($tags)->forget($effectiveKey);
         } catch (Throwable $e) {
-            Log::warning("[AtomicCache] Failed to forget key '{$formattedKey}': " . $e->getMessage());
+            Log::warning("[AtomicCache] Failed to forget key '{$effectiveKey}': " . $e->getMessage());
             return false;
         }
     }
@@ -214,6 +280,7 @@ class AtomicCache
 
     /**
      * Clear all cached keys belonging to the given tags.
+     * Works with native tags (Redis/Memcached) and graceful virtual tags (File/Database).
      */
     public function clearTags(array|string $tags): bool
     {
@@ -230,11 +297,26 @@ class AtomicCache
                 $store->tags($tagList)->flush();
                 return true;
             } catch (Throwable $e) {
-                Log::warning("[AtomicCache] Tag flush failed: " . $e->getMessage());
+                Log::warning("[AtomicCache] Native tag flush failed: " . $e->getMessage());
+                return false;
             }
         }
 
-        return false;
+        // Graceful fallback for non-taggable stores (file, database):
+        // Increment virtual tag version keys to invalidate all related entries instantly!
+        $allSuccess = true;
+        foreach ($tagList as $tag) {
+            try {
+                $tagVersionKey = $this->formatVirtualTagKey($tag);
+                $current = (int) $store->get($tagVersionKey, 1);
+                $store->forever($tagVersionKey, $current + 1);
+            } catch (Throwable $e) {
+                Log::warning("[AtomicCache] Virtual tag increment failed for '{$tag}': " . $e->getMessage());
+                $allSuccess = false;
+            }
+        }
+
+        return $allSuccess;
     }
 
     /**
@@ -273,7 +355,7 @@ class AtomicCache
         $waitSeconds = $this->waitSeconds ?? config('atomic-cache.stampede.wait_seconds', 5);
         $lockKey = 'lock:' . $this->formatKey($key);
 
-        if (method_exists($store, 'lock')) {
+        if ($this->supportsLock($store)) {
             try {
                 $lock = $store->lock($lockKey, $lockSeconds);
                 $acquired = $lock->block($waitSeconds);
@@ -303,6 +385,45 @@ class AtomicCache
         $value = $callback();
         $this->put($key, $value, $ttl, $tags);
         return $value;
+    }
+
+    /**
+     * Resolve effective key incorporating virtual tag versions if the driver does not support native tags.
+     */
+    protected function resolveKeyForStore(string $key, array $tags, Repository $store): string
+    {
+        $formattedKey = $this->formatKey($key);
+
+        if (empty($tags) || $this->supportsTags($store)) {
+            return $formattedKey;
+        }
+
+        // For non-taggable stores (file, database), append hash of virtual tag versions
+        $versions = $this->getVirtualTagVersions($tags, $store);
+        return "{$formattedKey}:vt:" . md5(json_encode($versions));
+    }
+
+    /**
+     * Get the current version numbers for the given tags from the store.
+     */
+    protected function getVirtualTagVersions(array $tags, Repository $store): array
+    {
+        $versions = [];
+        foreach ($tags as $tag) {
+            $tagVersionKey = $this->formatVirtualTagKey($tag);
+            $version = $store->get($tagVersionKey);
+            $versions[$tag] = $version !== null ? (int) $version : 1;
+        }
+        return $versions;
+    }
+
+    /**
+     * Format the cache key for storing a virtual tag's version.
+     */
+    protected function formatVirtualTagKey(string $tag): string
+    {
+        $prefix = config('atomic-cache.prefix', 'atomic');
+        return "{$prefix}:__tag_v__:{$tag}";
     }
 
     /**
@@ -438,18 +559,31 @@ class AtomicCache
     }
 
     /**
-     * Check if cache store supports tagging.
+     * Check if cache store supports native tagging.
      */
     public function supportsTags(Repository $store): bool
     {
-        if (method_exists(Cache::class, 'supportsTags')) {
-            try {
-                return Cache::supportsTags();
-            } catch (Throwable) {
-                // Continue to check store
-            }
+        if (method_exists($store, 'supportsTags')) {
+            return (bool) $store->supportsTags();
         }
 
-        return method_exists($store, 'tags');
+        if (method_exists($store, 'getStore')) {
+            return $store->getStore() instanceof \Illuminate\Cache\TaggableStore;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if cache store supports atomic locks.
+     */
+    public function supportsLock(Repository $store): bool
+    {
+        if (method_exists($store, 'getStore')) {
+            $raw = $store->getStore();
+            return $raw instanceof LockProvider || method_exists($raw, 'lock');
+        }
+
+        return false;
     }
 }

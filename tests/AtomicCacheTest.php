@@ -2,15 +2,59 @@
 
 namespace KaziOmar\AtomicCache\Tests;
 
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use KaziOmar\AtomicCache\Facades\AtomicCache;
+use KaziOmar\AtomicCache\Traits\AutoClearsCache;
+use KaziOmar\AtomicCache\Traits\HasAtomicCache;
+
+class TestPost extends Model
+{
+    use AutoClearsCache;
+
+    protected $table = 'test_posts';
+    protected $guarded = [];
+}
+
+class TestService
+{
+    use HasAtomicCache;
+
+    public function getCachedPosts()
+    {
+        return $this->cache(__FUNCTION__, func_get_args(), function () {
+            return ['post_1', 'post_2'];
+        });
+    }
+
+    public function getCachedItem(int $id)
+    {
+        return $this->cacheItem($id, function () use ($id) {
+            return "item_{$id}";
+        });
+    }
+}
 
 class AtomicCacheTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Schema::create('test_posts', function (Blueprint $table) {
+            $table->id();
+            $table->string('title');
+            $table->timestamps();
+        });
+    }
+
     public function test_can_put_and_get_cached_value(): void
     {
         AtomicCache::put('greeting', 'Hello World', 60);
 
         $this->assertEquals('Hello World', AtomicCache::get('greeting'));
+        $this->assertTrue(AtomicCache::has('greeting'));
     }
 
     public function test_remember_computes_and_caches_value(): void
@@ -29,6 +73,21 @@ class AtomicCacheTest extends TestCase
         $this->assertEquals(1, $executed, 'Callback should only be executed once');
     }
 
+    public function test_flexible_remember_signatures_work_seamlessly(): void
+    {
+        // 1. (key, ttl, callback) - Laravel native order
+        $val1 = AtomicCache::remember('key_order_1', 60, fn() => 'val1');
+        $this->assertEquals('val1', $val1);
+
+        // 2. (key, callback, ttl) - Flexible order
+        $val2 = AtomicCache::remember('key_order_2', fn() => 'val2', 60);
+        $this->assertEquals('val2', $val2);
+
+        // 3. (key, callback) - No TTL provided, uses default TTL
+        $val3 = AtomicCache::remember('key_order_3', fn() => 'val3');
+        $this->assertEquals('val3', $val3);
+    }
+
     public function test_forget_and_clear_removes_value(): void
     {
         AtomicCache::put('temp', 'value', 60);
@@ -36,6 +95,16 @@ class AtomicCacheTest extends TestCase
 
         AtomicCache::clear('temp');
         $this->assertNull(AtomicCache::get('temp'));
+        $this->assertFalse(AtomicCache::has('temp'));
+    }
+
+    public function test_pull_retrieves_and_forgets_item(): void
+    {
+        AtomicCache::put('pull_key', 'pull_value', 60);
+        $val = AtomicCache::pull('pull_key');
+
+        $this->assertEquals('pull_value', $val);
+        $this->assertNull(AtomicCache::get('pull_key'));
     }
 
     public function test_remember_for_user_scopes_by_user_id(): void
@@ -59,8 +128,75 @@ class AtomicCacheTest extends TestCase
 
     public function test_helper_function_works_properly(): void
     {
-        atomic_cache('helper_key', fn() => 'from_helper', 60);
-
+        // helper with (key, ttl, callback)
+        atomic_cache('helper_key', 60, fn() => 'from_helper');
         $this->assertEquals('from_helper', atomic_cache('helper_key'));
+
+        // helper returning instance
+        $instance = atomic_cache();
+        $this->assertInstanceOf(\KaziOmar\AtomicCache\AtomicCache::class, $instance);
+    }
+
+    public function test_file_driver_graceful_fallback_without_redis(): void
+    {
+        $count = 0;
+        $counterFn = function () use (&$count) {
+            $count++;
+            return "data_count_{$count}";
+        };
+
+        // 1. Should NOT crash on file store when tags are passed!
+        $fileCache = AtomicCache::store('file')->tags(['demo_tag']);
+        $first = $fileCache->remember('file_tag_key', $counterFn, 60);
+        $this->assertEquals('data_count_1', $first);
+
+        // 2. Cache hit should return same value without incrementing count
+        $second = $fileCache->remember('file_tag_key', $counterFn, 60);
+        $this->assertEquals('data_count_1', $second);
+        $this->assertEquals(1, $count);
+
+        // 3. Clear virtual tags on file driver
+        AtomicCache::store('file')->clearTags(['demo_tag']);
+
+        // 4. Next call should detect tag invalidation and execute callback again!
+        $third = $fileCache->remember('file_tag_key', $counterFn, 60);
+        $this->assertEquals('data_count_2', $third);
+        $this->assertEquals(2, $count);
+    }
+
+    public function test_has_atomic_cache_trait_on_service(): void
+    {
+        $service = new TestService();
+
+        $posts = $service->getCachedPosts();
+        $this->assertEquals(['post_1', 'post_2'], $posts);
+
+        $item = $service->getCachedItem(42);
+        $this->assertEquals('item_42', $item);
+    }
+
+    public function test_auto_clears_cache_trait_on_model_invalidation(): void
+    {
+        $post = TestPost::create(['title' => 'Initial Title']);
+
+        $count = 0;
+        $val1 = AtomicCache::tags(['test_posts', 'test_posts:' . $post->id])->remember('post_cache', function () use (&$count) {
+            $count++;
+            return "computed_{$count}";
+        }, 60);
+
+        $this->assertEquals('computed_1', $val1);
+
+        // Update model -> triggers AutoClearsCache
+        $post->update(['title' => 'Updated Title']);
+
+        // Cache must be cleared by model lifecycle
+        $val2 = AtomicCache::tags(['test_posts', 'test_posts:' . $post->id])->remember('post_cache', function () use (&$count) {
+            $count++;
+            return "computed_{$count}";
+        }, 60);
+
+        $this->assertEquals('computed_2', $val2);
+        $this->assertEquals(2, $count);
     }
 }
