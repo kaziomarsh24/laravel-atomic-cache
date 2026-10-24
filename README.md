@@ -62,7 +62,7 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 ## ⚙️ Requirements
 
 - **PHP:** `8.2`, `8.3`, `8.4`, `8.5`, or `8.6`
-- **Laravel Framework:** `10.x`, `11.x`, or `12.x`
+- **Laravel Framework:** `10.x`, `11.x`, `12.x`, or `13.x`
 - **PHP Extensions:** `ext-zlib` (optional for compression, built-in on 99% of PHP installs)
 
 ---
