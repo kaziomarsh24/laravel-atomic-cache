@@ -139,6 +139,9 @@ class AtomicCacheTest extends TestCase
 
     public function test_file_driver_graceful_fallback_without_redis(): void
     {
+        $tag = 'demo_tag_' . uniqid();
+        $key = 'file_tag_key_' . uniqid();
+
         $count = 0;
         $counterFn = function () use (&$count) {
             $count++;
@@ -146,20 +149,20 @@ class AtomicCacheTest extends TestCase
         };
 
         // 1. Should NOT crash on file store when tags are passed!
-        $fileCache = AtomicCache::store('file')->tags(['demo_tag']);
-        $first = $fileCache->remember('file_tag_key', $counterFn, 60);
+        $fileCache = AtomicCache::store('file')->tags([$tag]);
+        $first = $fileCache->remember($key, $counterFn, 60);
         $this->assertEquals('data_count_1', $first);
 
         // 2. Cache hit should return same value without incrementing count
-        $second = $fileCache->remember('file_tag_key', $counterFn, 60);
+        $second = $fileCache->remember($key, $counterFn, 60);
         $this->assertEquals('data_count_1', $second);
         $this->assertEquals(1, $count);
 
         // 3. Clear virtual tags on file driver
-        AtomicCache::store('file')->clearTags(['demo_tag']);
+        AtomicCache::store('file')->clearTags([$tag]);
 
         // 4. Next call should detect tag invalidation and execute callback again!
-        $third = $fileCache->remember('file_tag_key', $counterFn, 60);
+        $third = $fileCache->remember($key, $counterFn, 60);
         $this->assertEquals('data_count_2', $third);
         $this->assertEquals(2, $count);
     }
@@ -173,6 +176,36 @@ class AtomicCacheTest extends TestCase
 
         $item = $service->getCachedItem(42);
         $this->assertEquals('item_42', $item);
+    }
+
+    public function test_has_atomic_cache_safely_normalizes_closures_and_models(): void
+    {
+        $service = new TestService();
+        $post = TestPost::create(['title' => 'Closure Test Model']);
+        $closure = fn() => 'test_closure';
+
+        // Passing Closures and Models into cache() arguments should NOT throw serialization exception
+        $result = $service->cache('test_method_with_closure', [$closure, $post], function () {
+            return 'safe_computation';
+        });
+
+        $this->assertEquals('safe_computation', $result);
+    }
+
+    public function test_has_atomic_cache_differentiates_pagination_and_query_parameters(): void
+    {
+        $service = new TestService();
+
+        // Simulate page 1
+        request()->merge(['page' => 1]);
+        $page1 = $service->cacheCollection('paginated_list', fn() => 'Page 1 Results');
+
+        // Simulate page 2
+        request()->merge(['page' => 2]);
+        $page2 = $service->cacheCollection('paginated_list', fn() => 'Page 2 Results');
+
+        $this->assertEquals('Page 1 Results', $page1);
+        $this->assertEquals('Page 2 Results', $page2);
     }
 
     public function test_auto_clears_cache_trait_on_model_invalidation(): void

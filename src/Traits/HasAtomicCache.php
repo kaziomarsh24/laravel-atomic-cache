@@ -35,6 +35,7 @@ trait HasAtomicCache
 
     /**
      * Cache an expensive operation based on method name and arguments.
+     * Automatically normalizes complex arguments (Closures, Models) and accounts for request queries (pagination/filters).
      */
     public function cache(
         string $method,
@@ -45,7 +46,14 @@ trait HasAtomicCache
         bool $lock = false
     ): mixed {
         $resource = $this->getCacheResource();
-        $argHash = md5(serialize($args));
+        $safeArgs = $this->normalizeArguments($args);
+
+        // Include HTTP query parameters (e.g. ?page=2&filter=active) so paginated and filtered queries cache distinct results
+        if ($this->shouldIncludeRequestQuery()) {
+            $safeArgs['__query__'] = request()->query();
+        }
+
+        $argHash = md5(serialize($safeArgs));
         $cacheKey = "{$resource}:{$method}:{$argHash}";
         $effectiveTags = $tags ?? [$resource];
 
@@ -71,14 +79,64 @@ trait HasAtomicCache
 
     /**
      * Cache a collection or list query with collection tag.
+     * Automatically isolates paginated and filtered query results based on HTTP query parameters.
      */
-    public function cacheCollection(string $key, Closure $callback, ?int $ttl = null): mixed
+    public function cacheCollection(string $key, Closure $callback, ?int $ttl = null, array $extraArgs = []): mixed
     {
         $resource = $this->getCacheResource();
-        $cacheKey = "{$resource}:list:{$key}";
+        $safeArgs = $this->normalizeArguments($extraArgs);
+
+        if ($this->shouldIncludeRequestQuery()) {
+            $safeArgs['__query__'] = request()->query();
+        }
+
+        $queryHash = !empty($safeArgs) ? ':' . md5(serialize($safeArgs)) : '';
+        $cacheKey = "{$resource}:list:{$key}{$queryHash}";
         $tags = [$resource];
 
         return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
+    }
+
+    /**
+     * Safely normalize method arguments to avoid closure serialization errors and huge model payloads.
+     */
+    protected function normalizeArguments(array $args): array
+    {
+        return array_map(function ($arg) {
+            if ($arg instanceof Closure) {
+                return 'Closure#' . spl_object_hash($arg);
+            }
+
+            if (is_object($arg) && method_exists($arg, 'getKey') && method_exists($arg, 'getTable')) {
+                // Eloquent Model
+                return get_class($arg) . ':' . $arg->getKey();
+            }
+
+            if (is_object($arg) && $arg instanceof \Illuminate\Http\Request) {
+                return $arg->all();
+            }
+
+            if (is_object($arg)) {
+                if (method_exists($arg, 'toArray')) {
+                    return $arg->toArray();
+                }
+                return get_class($arg) . '#' . spl_object_hash($arg);
+            }
+
+            return $arg;
+        }, $args);
+    }
+
+    /**
+     * Check if current environment is an HTTP request with active query parameters.
+     */
+    protected function shouldIncludeRequestQuery(): bool
+    {
+        if (app()->runningInConsole() && !app()->runningUnitTests()) {
+            return false;
+        }
+
+        return request() && !empty(request()->query());
     }
 
     /**
