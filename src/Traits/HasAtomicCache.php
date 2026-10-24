@@ -42,9 +42,14 @@ trait HasAtomicCache
         array $args,
         Closure $callback,
         ?int $ttl = null,
-        ?array $tags = null,
+        bool|array|null $perUserOrTags = null,
         bool $lock = false
     ): mixed {
+        if (property_exists($this, 'cachingEnabled') && $this->cachingEnabled === false) {
+            return $callback();
+        }
+
+        $effectiveTtl = $ttl ?? (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
         $resource = $this->getCacheResource();
         $safeArgs = $this->normalizeArguments($args);
 
@@ -55,12 +60,31 @@ trait HasAtomicCache
 
         $argHash = md5(serialize($safeArgs));
         $cacheKey = "{$resource}:{$method}:{$argHash}";
-        $effectiveTags = $tags ?? [$resource];
 
-        return AtomicCache::tags($effectiveTags)->remember(
+        // Handle 5th argument: can be boolean $perUser or explicit array $tags
+        $isPerUser = false;
+        $effectiveTags = [$resource];
+
+        if (is_bool($perUserOrTags)) {
+            $isPerUser = $perUserOrTags;
+        } elseif (is_array($perUserOrTags)) {
+            $effectiveTags = $perUserOrTags;
+        }
+
+        if (!$isPerUser && property_exists($this, 'cachePerUser') && $this->cachePerUser === true) {
+            $isPerUser = true;
+        }
+
+        $cache = AtomicCache::tags($effectiveTags);
+
+        if ($isPerUser) {
+            $cache = $cache->forUser();
+        }
+
+        return $cache->remember(
             $cacheKey,
             $callback,
-            $ttl,
+            $effectiveTtl,
             lock: $lock
         );
     }

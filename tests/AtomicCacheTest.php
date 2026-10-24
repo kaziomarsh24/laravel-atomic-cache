@@ -272,4 +272,27 @@ class AtomicCacheTest extends TestCase
 
         $this->assertNull(AtomicCache::get('cmd_key'));
     }
+    public function test_has_atomic_cache_respects_service_properties_and_per_user(): void
+    {
+        $service = new class {
+            use HasAtomicCache;
+            public bool $cachingEnabled = true;
+            public bool $cachePerUser = false;
+            public int $cacheTTL = 3600;
+
+            public function getAll()
+            {
+                return $this->cache(__FUNCTION__, func_get_args(), fn() => ['item1', 'item2'], $this->cacheTTL, $this->cachePerUser);
+            }
+        };
+
+        // 1. Caches properly
+        $val1 = $service->getAll();
+        $this->assertEquals(['item1', 'item2'], $val1);
+
+        // 2. Disabling caching returns directly
+        $service->cachingEnabled = false;
+        $val2 = $service->getAll();
+        $this->assertEquals(['item1', 'item2'], $val2);
+    }
 }
