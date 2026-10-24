@@ -132,10 +132,6 @@ trait HasAtomicCache
      */
     protected function shouldIncludeRequestQuery(): bool
     {
-        if (app()->runningInConsole() && !app()->runningUnitTests()) {
-            return false;
-        }
-
         return request() && !empty(request()->query());
     }
 
