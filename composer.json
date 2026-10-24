@@ -1,5 +1,5 @@
 {
-    "name": "kaziomarsh24/laravel-atomic-cache",
+    "name": "thekaziomar/laravel-atomic-cache",
     "description": "A simple, stampede-proof, and tag-aware caching package for Laravel.",
     "keywords": [
         "laravel",
@@ -8,7 +8,7 @@
         "stampede-protection",
         "redis"
     ],
-    "homepage": "https://github.com/kaziomarsh24/laravel-atomic-cache",
+    "homepage": "https://github.com/thekaziomar/laravel-atomic-cache",
     "license": "MIT",
     "authors": [
         {
