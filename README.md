@@ -92,19 +92,33 @@ Works seamlessly like native Laravel cache, supporting flexible parameter orderi
 ```php
 use KaziOmar\AtomicCache\Facades\AtomicCache;
 
-// Both parameter orders are supported:
-$posts = AtomicCache::remember('posts.all', 3600, fn() => Post::all());
+// Standard signature: remember($key, $ttl, $callback)
+$posts = AtomicCache::remember('posts.all', 3600, function () {
+    return Post::where('published', true)->get();
+});
+
+// Alternative signature: remember($key, $callback, $ttl)
 $posts = AtomicCache::remember('posts.all', fn() => Post::all(), 3600);
 
-// Global helper function
+// Global helper shortcut
 $posts = atomic_cache('posts.all', fn() => Post::all(), 3600);
+```
 
-// Standard get, put, has, pull, clear
-AtomicCache::put('key', $value, 3600);
-$val = AtomicCache::get('key', default: null);
-$exists = AtomicCache::has('key');
-$val = AtomicCache::pull('key'); // Retrieve and forget
-AtomicCache::clear('key');       // Alias for forget()
+#### Understanding the Parameters:
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| **`$key`** | `string` | **Unique Cache Identifier** in your cache store (e.g. `'posts.all'`, `'home.banners'`). Using `{resource}.{action}` or `{module}:{query}` is the industry standard convention to prevent key collisions and enable easy searching in Redis (`redis-cli KEYS "atomic:posts.*"`). |
+| **`$ttl`** | `int` | **Time-To-Live in seconds** (e.g. `3600` = 1 hour, `86400` = 1 day). Specifies how long the value remains cached. If omitted, uses `config('atomic-cache.default_ttl', 3600)`. |
+| **`$callback`**| `Closure` | **Data Producer Callback**. Executes only when the cache is empty or expired. The returned value is automatically compressed (if >50KB), stored in cache, and returned. |
+
+```php
+// Standard CRUD methods:
+AtomicCache::put('key', $value, 3600);       // Store an item directly
+$val = AtomicCache::get('key', default: null); // Retrieve an item
+$exists = AtomicCache::has('key');             // Check existence
+$val = AtomicCache::pull('key');              // Retrieve and immediately delete
+AtomicCache::clear('key');                    // Delete item (alias of forget)
 ```
 
 ---
@@ -283,8 +297,11 @@ class UserService
 {
     use HasAtomicCache;
 
-    // Optional: override default resource name (defaults to table/plural class name)
-    protected string $cacheResource = 'users';
+    // Optional service-level configuration properties:
+    protected bool $cachingEnabled = true; // Set to false to bypass cache (useful in tests/debugging)
+    protected int $cacheTTL = 7200;        // Custom default TTL in seconds for this service
+    protected bool $cachePerUser = false;  // Scope all operations to the authenticated user ID
+    protected string $cacheResource = 'users'; // Base resource tag (defaults to table/plural class name)
 
     public function find(int $id)
     {
@@ -309,6 +326,17 @@ class UserService
     }
 }
 ```
+
+### Service Configuration Properties
+
+You can customize caching per service by declaring any of these optional properties:
+
+| Property | Type | Default | Purpose |
+| :--- | :--- | :--- | :--- |
+| **`$cachingEnabled`** | `bool` | `true` | **Service Cache Toggle.** Set to `false` during automated testing or debugging to bypass caching completely and always fetch fresh database records. |
+| **`$cacheTTL`** | `int` | `3600` | **Service-Level Expiry.** Defines the default cache lifetime in seconds for this specific service without overriding global config. |
+| **`$cachePerUser`** | `bool` | `false` | **Automatic User Isolation.** When set to `true`, all cache keys generated in this service are automatically prefixed with the logged-in user's ID (`auth()->id()`), preventing user data leaks. |
+| **`$cacheResource`** | `string` | *(auto)* | **Resource Tag & Namespace.** Specifies the cache tag and key prefix (e.g. `'users'`, `'orders'`). Defaults automatically to the model's table or pluralized class name (`UserService` -> `'users'`). |
 
 ### Safe Argument Normalization
 If a service method receives complex arguments (e.g. `Closure`, Eloquent `Model`, or `Request`), `HasAtomicCache` safely converts them to unique hashes/identifiers before serialization. You will **never** encounter `Exception: Serialization of 'Closure' is not allowed`.
