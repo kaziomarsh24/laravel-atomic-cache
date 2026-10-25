@@ -1,12 +1,16 @@
 {
     "name": "thekaziomar/laravel-atomic-cache",
-    "description": "A simple, stampede-proof, and tag-aware caching package for Laravel.",
+    "description": "Zero-headache, stampede-proof, and auto-invalidating caching for Laravel. Cache database queries in 2 lines without managing keys or observers.",
     "keywords": [
         "laravel",
         "cache",
-        "atomic",
+        "eloquent",
+        "query-cache",
+        "auto-invalidation",
         "stampede-protection",
-        "redis"
+        "redis",
+        "compression",
+        "performance"
     ],
     "homepage": "https://github.com/kaziomarsh24/laravel-atomic-cache",
     "license": "MIT",
