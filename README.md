@@ -416,25 +416,41 @@ AtomicCache::clearTags([Product::class, 42]);
 
 ### 15. Model Audit & Invalidation Inspector
 
-Inspect your entire application's models and verify cache invalidation tags with the built-in doctor command:
+Inspect your entire application's models, verify cache invalidation tags, and check architectural health with the built-in doctor command:
 
 ```bash
+# Run full model audit
 php artisan atomic-cache:check
+
+# Filter by status: active, recommended, or exempt
+php artisan atomic-cache:check --filter=recommended
+
+# Export machine-readable report for CI/CD pipelines
+php artisan atomic-cache:check --json
 ```
 
 ```text
-🔍 Scanning application for Eloquent Models & Cache Tags...
+Atomic Cache Architecture Audit
+Target Path: /var/www/html/app/Models
 
-+---------------------+-------------------+---------------------------+-----------------------------------+
-| Model Class         | AutoClearsCache   | Primary Invalidation Tags | Related Custom Tags               |
-+---------------------+-------------------+---------------------------+-----------------------------------+
-| App\Models\User     | ✅ Enabled        | users, users:{id}         | None (Table only)                 |
-| App\Models\Product  | ✅ Enabled        | products, products:{id}   | homepage_featured, categories:{id}|
-| App\Models\Order    | ⚠️ Missing Trait  | N/A                       | Consider adding AutoClearsCache   |
-+---------------------+-------------------+---------------------------+-----------------------------------+
++-----------------------------+-------------+-----------------------+------------------------------------------+
+| Model                       | Status      | Primary Invalidation  | Tags / Notes                             |
++-----------------------------+-------------+-----------------------+------------------------------------------+
+| App\Models\Product          | Active      | products, products:id | product_categories, stores:{id}:products |
+| App\Models\User             | Active      | users, users:{id}     | None                                     |
+| App\Models\Plan             | Recommended | N/A                   | Domain model (Candidate for AutoClears)  |
+| App\Models\Message          | Exempt      | N/A                   | Real-time Stream (Uncached by design)    |
+| App\Models\WalkRoute        | Exempt      | N/A                   | High-Frequency Stream (Uncached)         |
++-----------------------------+-------------+-----------------------+------------------------------------------+
 
-Audit Complete: 2 of 3 models have automatic cache invalidation enabled.
-💡 Tip: Add 'use \KaziOmar\AtomicCache\Traits\AutoClearsCache;' to models to auto-flush cache on commit.
++-------------------------------------------------------------------------+
+| Summary: 39 models scanned                                              |
+| • Active (AutoClearsCache): 18                                          |
+| • Exempt (Telemetry / Ephemeral): 16                                    |
+| • Recommended: 5                                                        |
+|                                                                         |
+| Architecture Health Score: 87% (Optimal Balance)                        |
++-------------------------------------------------------------------------+
 ```
 
 ---

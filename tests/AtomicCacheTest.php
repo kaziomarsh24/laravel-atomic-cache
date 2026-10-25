@@ -662,7 +662,15 @@ class AtomicCacheTest extends TestCase
         $exitCode = \Illuminate\Support\Facades\Artisan::call('atomic-cache:check');
         $this->assertEquals(0, $exitCode);
         $output = \Illuminate\Support\Facades\Artisan::output();
-        $this->assertStringContainsString('Scanning application for Eloquent Models', $output);
+        $this->assertStringContainsString('Atomic Cache Architecture Audit', $output);
+
+        // Test with JSON option
+        $jsonCode = \Illuminate\Support\Facades\Artisan::call('atomic-cache:check', ['--json' => true]);
+        $this->assertEquals(0, $jsonCode);
+        $jsonOutput = \Illuminate\Support\Facades\Artisan::output();
+        $decoded = json_decode($jsonOutput, true);
+        $this->assertIsArray($decoded);
+        $this->assertArrayHasKey('health_score', $decoded);
     }
 
     public function test_normalize_tags_handles_numeric_and_nested_arrays(): void
