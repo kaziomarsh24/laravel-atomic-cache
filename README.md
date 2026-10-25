@@ -29,12 +29,15 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
   - [1. Basic Caching](#1-basic-caching)
   - [2. Stampede Protection (rememberWithLock)](#2-stampede-protection-rememberwithlock)
   - [3. Auto Payload Compression (Gzip)](#3-auto-payload-compression-gzip)
-  - [4. Virtual Tagging Engine (File & Database Fallback)](#4-virtual-tagging-engine-file--database-fallback)
-  - [5. Cache TTL Jitter (Thundering Herd Prevention)](#5-cache-ttl-jitter-thundering-herd-prevention)
-  - [6. User-Scoped Caching (rememberForUser)](#6-user-scoped-caching-rememberforuser)
-  - [7. Fluent Chainable Builder](#7-fluent-chainable-builder)
-  - [8. Blade Fragment Caching](#8-blade-fragment-caching)
-  - [9. Artisan CLI Command](#9-artisan-cli-command)
+  - [4. Transparent Chunking (Large Datasets & Collections)](#4-transparent-chunking-large-datasets--collections)
+  - [5. Write Deduplication (Cache DNA)](#5-write-deduplication-cache-dna)
+  - [6. Virtual Tagging Engine (File & Database Fallback)](#6-virtual-tagging-engine-file--database-fallback)
+  - [7. Cache TTL Jitter (Thundering Herd Prevention)](#7-cache-ttl-jitter-thundering-herd-prevention)
+  - [8. User-Scoped Caching (rememberForUser)](#8-user-scoped-caching-rememberforuser)
+  - [9. Fluent Chainable Builder](#9-fluent-chainable-builder)
+  - [10. Blade Fragment Caching](#10-blade-fragment-caching)
+  - [11. Artisan CLI Diagnostics & Benchmark](#11-artisan-cli-diagnostics--benchmark)
+  - [12. Cache Clearing Command](#12-cache-clearing-command)
 - [Eloquent Model Lifecycle (AutoClearsCache)](#eloquent-model-lifecycle-autoclearscache)
 - [Service & Repository Layer (HasAtomicCache)](#service--repository-layer-hasatomiccache)
   - [Safe Argument Normalization](#safe-argument-normalization)
@@ -181,7 +184,7 @@ AtomicCache::put('app_config', $config, 3600); // Same data & TTL valid -> Write
 
 ---
 
-### 4. Virtual Tagging Engine (File & Database Fallback)
+### 6. Virtual Tagging Engine (File & Database Fallback)
 
 In Laravel, calling `Cache::tags(['users'])` on `file` or `database` cache drivers crashes with `BadMethodCallException: This cache store does not support tagging.`
 
@@ -207,7 +210,7 @@ AtomicCache::flushCollection('users'); // alias: clearCollection()
 
 ---
 
-### 5. Cache TTL Jitter (Thundering Herd Prevention)
+### 7. Cache TTL Jitter (Thundering Herd Prevention)
 
 If you cache 1,000 keys for 3,600 seconds, they will all expire at the exact same microsecond, causing a sudden CPU and database spike.
 
@@ -223,7 +226,7 @@ AtomicCache::withJitter(0.10)->remember('feed.popular', fn() => getFeed(), 3600)
 
 ---
 
-### 6. User-Scoped Caching (`rememberForUser`)
+### 8. User-Scoped Caching (`rememberForUser`)
 
 Avoid manually concatenating `Auth::id()` into your cache keys:
 
@@ -239,7 +242,7 @@ $profile = AtomicCache::rememberForUser('profile', fn() => User::find(99), userI
 
 ---
 
-### 7. Fluent Chainable Builder
+### 9. Fluent Chainable Builder
 
 You can fluently combine any optimizations in a clean builder chain:
 
@@ -256,7 +259,7 @@ $data = AtomicCache::store('redis')
 
 ---
 
-### 8. Blade Fragment Caching
+### 10. Blade Fragment Caching
 
 Cache expensive HTML blocks, navigation bars, or sidebar widgets directly in Blade templates:
 
@@ -275,7 +278,7 @@ Cache expensive HTML blocks, navigation bars, or sidebar widgets directly in Bla
 
 ---
 
-### 9. Artisan CLI Diagnostics & Benchmark
+### 11. Artisan CLI Diagnostics & Benchmark
 
 Atomic Cache ships with an integrated performance benchmarking suite to inspect your real-world speedup and memory efficiency:
 
@@ -306,7 +309,7 @@ php artisan atomic-cache:bench --format=json
 ✨ AtomicCache is operating optimally on [redis] driver with full stampede, compression, and chunking protection.
 ```
 
-### 10. Cache Clearing Command
+### 12. Cache Clearing Command
 
 ```bash
 # Clear a specific cache tag or key
@@ -444,6 +447,18 @@ return [
         'level' => env('ATOMIC_CACHE_COMPRESSION_LEVEL', 6),
     ],
 
+    // Transparent chunking for large datasets & collections
+    'chunking' => [
+        'enabled' => env('ATOMIC_CACHE_CHUNKING_ENABLED', true),
+        'threshold' => env('ATOMIC_CACHE_CHUNKING_THRESHOLD', 1000), // items threshold
+        'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000), // items per chunk
+    ],
+
+    // Write deduplication (skips rewriting unchanged payloads)
+    'deduplication' => [
+        'enabled' => env('ATOMIC_CACHE_DEDUPLICATION_ENABLED', true),
+    ],
+
     // Self-healing from corrupted cache payloads
     'self_healing' => [
         'enabled' => env('ATOMIC_CACHE_SELF_HEALING', true),
@@ -471,6 +486,10 @@ return [
 | `ATOMIC_CACHE_WAIT_SECONDS` | `5` | Maximum wait time for concurrent requests |
 | `ATOMIC_CACHE_COMPRESSION_ENABLED`| `true` | Auto-compress payloads exceeding threshold |
 | `ATOMIC_CACHE_COMPRESSION_THRESHOLD`| `51200` | Compression threshold in bytes (50 KB) |
+| `ATOMIC_CACHE_CHUNKING_ENABLED` | `true` | Auto-partition large datasets into safe chunk keys |
+| `ATOMIC_CACHE_CHUNKING_THRESHOLD` | `1000` | Minimum item count required to trigger chunking |
+| `ATOMIC_CACHE_CHUNK_SIZE` | `1000` | Item count per partitioned chunk |
+| `ATOMIC_CACHE_DEDUPLICATION_ENABLED`| `true` | Skip redundant cache writes when payload is unchanged |
 | `ATOMIC_CACHE_JITTER_ENABLED` | `false` | Enable TTL variance globally |
 | `ATOMIC_CACHE_JITTER_PERCENTAGE` | `5` | Jitter variance percentage (±5%) |
 
