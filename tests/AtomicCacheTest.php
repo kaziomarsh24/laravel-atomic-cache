@@ -534,5 +534,53 @@ class AtomicCacheTest extends TestCase
         $this->assertEquals('val_3', $val3);
         $this->assertEquals(3, $count);
     }
+
+    public function test_has_atomic_cache_strips_tracking_and_marketing_query_parameters(): void
+    {
+        $service = new TestService();
+        $listKey = 'clean_list_' . uniqid();
+
+        // 1. Request with clean query (page 1)
+        request()->query = new \Symfony\Component\HttpFoundation\InputBag(['page' => 1, 'status' => 'active']);
+        $count = 0;
+        $res1 = $service->cacheCollection($listKey, function () use (&$count) {
+            $count++;
+            return "computed_{$count}";
+        });
+        $this->assertEquals('computed_1', $res1);
+
+        // 2. Request with same filters PLUS tracking query params (fbclid, utm_source, gclid)
+        request()->query = new \Symfony\Component\HttpFoundation\InputBag([
+            'page' => 1,
+            'status' => 'active',
+            'fbclid' => 'IwAR_random_fb_click_id',
+            'utm_source' => 'facebook',
+            'utm_campaign' => 'black_friday',
+            'gclid' => 'google_click_id_999',
+        ]);
+
+        $res2 = $service->cacheCollection($listKey, function () use (&$count) {
+            $count++;
+            return "computed_{$count}";
+        });
+
+        // Must hit cache! Count should not increment because marketing tags were stripped
+        $this->assertEquals('computed_1', $res2);
+        $this->assertEquals(1, $count);
+    }
+
+    public function test_write_deduplication_refreshes_ttl_when_content_identical(): void
+    {
+        $key = 'dedup_ttl_key_' . uniqid();
+
+        // Initial write with 100 seconds
+        AtomicCache::put($key, ['message' => 'hello'], 100);
+        $this->assertTrue(AtomicCache::has($key));
+
+        // Re-write identical content with 500 seconds
+        $result = AtomicCache::put($key, ['message' => 'hello'], 500);
+        $this->assertTrue($result);
+        $this->assertTrue(AtomicCache::has($key));
+    }
 }
 

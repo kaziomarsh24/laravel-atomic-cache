@@ -160,6 +160,7 @@ Storing large collections (e.g. 10,000+ items or multi-megabyte reports) in a si
 
 Atomic Cache includes **Transparent Chunking**:
 - Arrays and Collections exceeding the threshold (default: 1,000 items) are automatically partitioned into safe chunk keys (`{key}:__chunk__:0`, `{key}:__chunk__:1`).
+- **Single-Roundtrip Batch Reassembly:** Chunks are retrieved simultaneously using Laravel's `many()` (MGET on Redis), avoiding sequential network round-trips.
 - **Key preservation:** Associative and sparse numeric keys remain intact upon reassembly.
 - **Auto Collection restoration:** Collections are seamlessly reconstituted as `Illuminate\Support\Collection`.
 - **Self-Healing recovery:** If an individual chunk is evicted or lost, Atomic Cache evicts the broken metadata and transparently regenerates a fresh payload without crashing your application.
@@ -175,11 +176,11 @@ $dataset = AtomicCache::remember('large_report', 3600, fn() => ExportReport::all
 
 Repeated writes of identical data waste Redis CPU, I/O, and network bandwidth.
 
-Atomic Cache hashes content before writing (`Cache DNA`). When the identical payload is already cached with valid remaining TTL, **the redundant write operation is automatically skipped**:
+Atomic Cache hashes content before writing (`Cache DNA`). When the identical payload is already cached with valid remaining TTL, **the redundant re-serialization is skipped while safely refreshing the TTL in the cache store**:
 
 ```php
-AtomicCache::put('app_config', $config, 3600); // Written to store
-AtomicCache::put('app_config', $config, 3600); // Same data & TTL valid -> Write skipped!
+AtomicCache::put('app_config', $config, 3600); // Serialized & written to store
+AtomicCache::put('app_config', $config, 7200); // Same data -> Heavy serialization skipped & TTL extended to 7200s!
 ```
 
 ---
@@ -408,10 +409,12 @@ You can customize caching per service by declaring any of these optional propert
 ### Safe Argument Normalization
 If a service method receives complex arguments (e.g. `Closure`, Eloquent `Model`, or `Request`), `HasAtomicCache` safely converts them to unique hashes/identifiers before serialization. You will **never** encounter `Exception: Serialization of 'Closure' is not allowed`.
 
-### Automatic Pagination & Filter Isolation
-When calling `cache()` or `cacheCollection()`, the trait automatically inspects `request()->query()`.
-- Request `GET /users?page=1` and `GET /users?page=2` are automatically stored under separate, isolated cache keys.
-- Search filters like `?filter=active&sort=desc` automatically receive independent cache entries.
+### Automatic Pagination & Filter Isolation (With Smart Tracking Sanitization)
+When calling `cache()` or `rememberCollection()`, the trait automatically inspects `request()->query()`:
+- **Clean Segmentation:** Request `GET /users?page=1` and `GET /users?page=2` are automatically stored under separate, isolated cache keys.
+- **Cache Fragmentation Prevention (Cloudflare/CDN Style):** Common ad/analytics tracking parameters (`utm_*`, `fbclid`, `gclid`, `ttclid`, `msclkid`, `mc_cid`, `ref`, etc.) are automatically stripped before generating cache keys. When 10,000 visitors arrive from Facebook or Google Ads with unique `?fbclid=...` strings, they all share the exact same cached payload instead of polluting your cache memory with 10,000 duplicate entries!
+
+You can customize or extend ignored query parameters in `config/atomic-cache.php` or by defining `protected array $ignoredQueryParams = ['custom_tracker'];` on your service class.
 
 ---
 

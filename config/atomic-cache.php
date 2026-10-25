@@ -131,4 +131,35 @@ return [
         'enabled' => env('ATOMIC_CACHE_JITTER_ENABLED', false),
         'percentage' => env('ATOMIC_CACHE_JITTER_PERCENTAGE', 5), // ±5%
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ignored HTTP Query Parameters (Cache Key Sanitization)
+    |--------------------------------------------------------------------------
+    |
+    | Tracking and analytics parameters (marketing tags) that should be excluded
+    | when calculating unique cache keys for paginated or filtered requests.
+    | Prevents cache fragmentation caused by ad campaign tracking parameters.
+    |
+    */
+    'ignored_query_parameters' => [
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
+        'utm_term',
+        'utm_content',
+        'fbclid',
+        'gclid',
+        'dclid',
+        'wbraid',
+        'gbraid',
+        'ttclid',
+        'msclkid',
+        'mc_cid',
+        'mc_eid',
+        '_ga',
+        '_gl',
+        '_gid',
+        'ref',
+    ],
 ];

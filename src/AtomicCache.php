@@ -229,7 +229,10 @@ class AtomicCache
                 $dna = md5(serialize($value));
                 $existingDna = $repository->get($dnaKey);
                 if ($existingDna !== null && $existingDna === $dna && $repository->has($effectiveKey)) {
-                    // Content is identical and already exists in cache: skip write to save I/O and CPU
+                    // Content is identical and already exists in cache:
+                    // Refresh TTL on DNA key and target store so caller's new expiration is honored without re-serializing heavy payload
+                    $repository->put($dnaKey, $dna, $ttl);
+                    $this->refreshKeyTtl($effectiveKey, $ttl, $repository);
                     return true;
                 }
             } catch (Throwable) {
@@ -340,6 +343,29 @@ class AtomicCache
             }
         } catch (Throwable) {
             // Ignore errors during chunk cleanup
+        }
+    }
+
+    /**
+     * Refresh the TTL of an existing key without re-serializing payload.
+     */
+    protected function refreshKeyTtl(string $effectiveKey, int $ttl, Repository $repository): void
+    {
+        try {
+            $rawStore = $this->getRawStore();
+            if ($rawStore instanceof \Illuminate\Cache\RedisStore) {
+                $prefix = $rawStore->getPrefix();
+                $rawStore->connection()->expire($prefix . $effectiveKey, $ttl);
+                return;
+            }
+
+            // For chunked items, refreshing the root manifest updates its expiration
+            $raw = $repository->get($effectiveKey);
+            if (is_array($raw) && !empty($raw['__ac_chunked'])) {
+                $repository->put($effectiveKey, $raw, $ttl);
+            }
+        } catch (Throwable) {
+            // Silently ignore TTL refresh errors
         }
     }
 
@@ -692,11 +718,18 @@ class AtomicCache
         if (!empty($raw['__ac_chunked'])) {
             $repository = $repository ?? $this->getRepository($tags);
             $chunksCount = (int) ($raw['chunks_count'] ?? 0);
+
+            // Fetch all chunks in a single batch round-trip via many() to prevent sequential network latency
+            $chunkKeys = [];
+            for ($i = 0; $i < $chunksCount; $i++) {
+                $chunkKeys[] = "{$key}:__chunk__:{$i}";
+            }
+
+            $fetchedChunks = $repository->many($chunkKeys);
             $restored = [];
 
-            for ($i = 0; $i < $chunksCount; $i++) {
-                $chunkKey = "{$key}:__chunk__:{$i}";
-                $chunkRaw = $repository->get($chunkKey);
+            foreach ($chunkKeys as $i => $chunkKey) {
+                $chunkRaw = $fetchedChunks[$chunkKey] ?? null;
 
                 if ($chunkRaw === null) {
                     throw new \RuntimeException("Missing chunk {$i} of {$chunksCount} for key '{$key}'");

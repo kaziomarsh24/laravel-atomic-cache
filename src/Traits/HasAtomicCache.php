@@ -56,9 +56,12 @@ trait HasAtomicCache
         $resource = $this->getCacheResource();
         $safeArgs = $this->normalizeArguments($args);
 
-        // Include HTTP query parameters (e.g. ?page=2&filter=active) so paginated and filtered queries cache distinct results
+        // Include sanitized HTTP query parameters (e.g. ?page=2&filter=active) while excluding marketing tracking tags (utm_*, fbclid)
         if ($this->shouldIncludeRequestQuery()) {
-            $safeArgs['__query__'] = request()->query();
+            $sanitizedQuery = $this->getSanitizedRequestQuery();
+            if (!empty($sanitizedQuery)) {
+                $safeArgs['__query__'] = $sanitizedQuery;
+            }
         }
 
         $argHash = md5(serialize($safeArgs));
@@ -168,7 +171,10 @@ trait HasAtomicCache
         $safeArgs = $this->normalizeArguments($extraArgs);
 
         if ($this->shouldIncludeRequestQuery()) {
-            $safeArgs['__query__'] = request()->query();
+            $sanitizedQuery = $this->getSanitizedRequestQuery();
+            if (!empty($sanitizedQuery)) {
+                $safeArgs['__query__'] = $sanitizedQuery;
+            }
         }
 
         $queryHash = !empty($safeArgs) ? ':' . md5(serialize($safeArgs)) : '';
@@ -230,6 +236,39 @@ trait HasAtomicCache
     protected function shouldIncludeRequestQuery(): bool
     {
         return request() && !empty(request()->query());
+    }
+
+    /**
+     * Get sanitized query parameters excluding common analytics/marketing parameters.
+     * Prevents cache fragmentation caused by tracking query strings (e.g. fbclid, utm_source).
+     */
+    protected function getSanitizedRequestQuery(): array
+    {
+        if (!request() || empty(request()->query())) {
+            return [];
+        }
+
+        $defaultIgnored = [
+            'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+            'fbclid', 'gclid', 'dclid', 'wbraid', 'gbraid', 'ttclid', 'msclkid',
+            'mc_cid', 'mc_eid', '_ga', '_gl', '_gid', 'ref',
+        ];
+
+        $ignoredKeys = config('atomic-cache.ignored_query_parameters', $defaultIgnored);
+        if (property_exists($this, 'ignoredQueryParams') && is_array($this->ignoredQueryParams)) {
+            $ignoredKeys = array_merge($ignoredKeys, $this->ignoredQueryParams);
+        }
+
+        $query = request()->query();
+
+        foreach ($ignoredKeys as $key) {
+            unset($query[$key]);
+        }
+
+        // Also strip any wildcard utm_* parameters
+        return array_filter($query, function ($k) {
+            return !str_starts_with((string) $k, 'utm_');
+        }, ARRAY_FILTER_USE_KEY);
     }
 
     /**
