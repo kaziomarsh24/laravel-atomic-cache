@@ -61,8 +61,12 @@ trait AutoClearsCache
         $table = $this->getTable();
         $id = $this->getKey();
 
-        // 1. Invalidate single item tag: "users:12"
-        $tags = ["{$table}:{$id}"];
+        $tags = [];
+
+        // 1. Invalidate single item tag: "users:12" (only if key is present)
+        if ($id !== null && $id !== '') {
+            $tags[] = "{$table}:{$id}";
+        }
 
         // 2. Invalidate collection tag: "users"
         $tags[] = $table;

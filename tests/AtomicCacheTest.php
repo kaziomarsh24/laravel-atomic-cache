@@ -582,5 +582,14 @@ class AtomicCacheTest extends TestCase
         $this->assertTrue($result);
         $this->assertTrue(AtomicCache::has($key));
     }
+
+    public function test_auto_clears_cache_resolves_tags_cleanly_without_empty_key(): void
+    {
+        $unpersistedPost = new TestPost();
+        $tags = $unpersistedPost->resolveCacheTagsToClear();
+
+        $this->assertContains('test_posts', $tags);
+        $this->assertNotContains('test_posts:', $tags);
+    }
 }
 

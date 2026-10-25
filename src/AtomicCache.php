@@ -359,9 +359,9 @@ class AtomicCache
                 return;
             }
 
-            // For chunked items, refreshing the root manifest updates its expiration
+            // For non-Redis stores (file, database, memcached, array), refresh TTL with already-packed payload
             $raw = $repository->get($effectiveKey);
-            if (is_array($raw) && !empty($raw['__ac_chunked'])) {
+            if ($raw !== null) {
                 $repository->put($effectiveKey, $raw, $ttl);
             }
         } catch (Throwable) {
