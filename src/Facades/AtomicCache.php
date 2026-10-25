@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool flushCollection(string $resource)
  * @method static bool supportsTags(\Illuminate\Contracts\Cache\Repository $store)
  * @method static bool supportsLock(\Illuminate\Contracts\Cache\Repository $store)
+ * @method static array normalizeTags(array $tags)
  *
  * @see \KaziOmar\AtomicCache\AtomicCache
  */

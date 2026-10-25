@@ -368,8 +368,11 @@ AtomicCache::tags([Product::class, Category::class])
 // Passing model instances automatically tags both "products:12" and "products":
 AtomicCache::tags([$product])->remember(...);
 
-// Invalidation also supports type-safe classes:
-AtomicCache::clearTags([Product::class]);
+// Supports numeric IDs and nested tag arrays seamlessly:
+AtomicCache::tags(['orders', 42, ['vip', 'eu']])->remember(...);
+
+// Invalidation also supports type-safe classes & IDs:
+AtomicCache::clearTags([Product::class, 42]);
 ```
 
 ---
