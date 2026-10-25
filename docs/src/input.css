@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar hiding */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Syntax Highlighting Tokens (Universal High-Contrast Code Editor Theme) */
+/* These tokens remain vibrant & legible on dark editor background in BOTH light & dark modes */
+.token-keyword {
+  color: #ff7b72 !important;
+  font-weight: 600;
+}
+.token-class {
+  color: #79c0ff !important;
+  font-weight: 600;
+}
+.token-function {
+  color: #d2a8ff !important;
+}
+.token-string {
+  color: #7ee787 !important;
+}
+.token-number {
+  color: #ffa657 !important;
+}
+.token-variable {
+  color: #ffa657 !important;
+  font-weight: 500;
+}
+.token-comment {
+  color: #8b949e !important;
+  font-style: italic;
+}
+.token-operator {
+  color: #ff7b72 !important;
+}
