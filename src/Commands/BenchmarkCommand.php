@@ -180,33 +180,29 @@ class BenchmarkCommand extends Command
     {
         $this->newLine();
         $this->table(
-            ['Metric Category', 'Scenario', 'Raw / Simulated Baseline', 'AtomicCache Result', 'Improvement / Status'],
+            ['Benchmark', 'Baseline', 'AtomicCache', 'Improvement / Status'],
             [
                 [
-                    '⚡ Latency / Speed',
-                    'Database Query vs Cache Hit',
-                    "{$latency['simulated_db_ms']} ms",
+                    'Latency (Speed)',
+                    "{$latency['simulated_db_ms']} ms (DB)",
                     "{$latency['warm_hit_ms']} ms",
                     "<info>+{$latency['speedup_percent']}% Faster</info>",
                 ],
                 [
-                    '📦 Payload Size',
-                    'Large Array Gzip Compression',
-                    round($compression['raw_bytes'] / 1024, 2) . ' KB',
-                    round($compression['compressed_bytes'] / 1024, 2) . ' KB',
+                    'Payload Size',
+                    round($compression['raw_bytes'] / 1024, 2) . ' KB (Raw)',
+                    round($compression['compressed_bytes'] / 1024, 2) . ' KB (Gzip)',
                     "<info>{$compression['saved_percent']}% Memory Saved</info>",
                 ],
                 [
-                    '🧩 Safe Chunking',
-                    'Large Dataset (2,500 items)',
-                    'Single raw item (Risk: 1MB limit)',
+                    'Mega Dataset',
+                    '1 Item (>1MB limit)',
                     "{$chunking['chunks_count']} safe chunks",
-                    $chunking['integrity_passed'] ? '<info>Passed (Keys Preserved)</info>' : '<error>Failed</error>',
+                    $chunking['integrity_passed'] ? '<info>Passed (Preserved)</info>' : '<error>Failed</error>',
                 ],
                 [
-                    '🏷️ Tag Resilience',
-                    'Non-Redis Virtual Tagging',
-                    $tagging['native_tags_supported'] ? 'Native Tag Support' : 'No Native Tag Support',
+                    'Tag Resilience',
+                    $tagging['native_tags_supported'] ? 'Native Tag Support' : 'No Native Support',
                     $tagging['virtual_tagging_resilient'] ? 'Zero-Crash Emulation' : 'Failed',
                     '<info>Resilient (Zero Crash)</info>',
                 ],

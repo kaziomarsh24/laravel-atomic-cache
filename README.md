@@ -345,14 +345,14 @@ php artisan atomic-cache:bench --format=json
 ```text
 ⚡ Running AtomicCache Benchmark against driver [redis] (5 iterations)...
 
-+--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
-| Metric Category    | Scenario                     | Raw / Simulated Baseline          | AtomicCache Result   | Improvement / Status    |
-+--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
-| ⚡ Latency / Speed | Database Query vs Cache Hit  | 45.00 ms                          | 0.04 ms              | +99.9% Faster           |
-| 📦 Payload Size    | Large Array Gzip Compression | 95.48 KB                          | 4.13 KB              | 95.7% Memory Saved      |
-| 🧩 Safe Chunking   | Large Dataset (2,500 items)  | Single raw item (Risk: 1MB limit) | 3 safe chunks        | Passed (Keys Preserved) |
-| 🏷️ Tag Resilience  | Non-Redis Virtual Tagging    | Native Tag Support                | Zero-Crash Emulation | Resilient (Zero Crash)  |
-+--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
++-------------------+---------------------+---------------------+-------------------------+
+| Benchmark         | Baseline            | AtomicCache         | Improvement / Status    |
++-------------------+---------------------+---------------------+-------------------------+
+| Latency (Speed)   | 45.00 ms (DB)       | 0.28 ms             | +99.4% Faster           |
+| Payload Size      | 95.48 KB (Raw)      | 4.13 KB (Gzip)      | 95.7% Memory Saved      |
+| Mega Dataset      | 1 Item (>1MB limit) | 3 safe chunks       | Passed (Preserved)      |
+| Tag Resilience    | Native Tag Support  | Zero-Crash Emulate  | Resilient (Zero Crash)  |
++-------------------+---------------------+---------------------+-------------------------+
 
 ✨ AtomicCache is operating optimally on [redis] driver with full stampede, compression, and chunking protection.
 ```
