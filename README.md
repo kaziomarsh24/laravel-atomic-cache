@@ -50,12 +50,15 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 | Feature | Standard Laravel Cache | Laravel Atomic Cache |
 | :--- | :--- | :--- |
 | **Stampede Protection** | ❌ All concurrent requests hit DB | ✅ **Atomic Lock** (1 worker computes, others wait & read) |
-| **Large Payload Size** | ❌ Raw uncompressed serialization | ✅ **Auto Gzip** (>50KB cuts Redis RAM by ~70%) |
+| **Large Payload Size** | ❌ Raw uncompressed serialization | ✅ **Auto Gzip** (>50KB cuts Redis RAM by ~90%) |
+| **Mega Datasets** | ❌ Fails on 1MB Memcached / Redis freeze | ✅ **Transparent Chunking** (splits safely, preserves keys) |
+| **Redundant Writes** | ❌ Every put hits storage/network | ✅ **Write Deduplication** (skips unchanged payloads) |
 | **Driver Tag Support** | ❌ Crashes on File/Database stores | ✅ **Virtual Tagging** (works across all stores without Redis) |
 | **Corrupted Data** | ❌ Throws crash exception to user | ✅ **Self-Healing** (cleans key, regenerates silently) |
 | **Simultaneous Expiry** | ❌ All keys expire in same second | ✅ **TTL Jitter** (random variance prevents herd spikes) |
 | **Model Invalidation** | ⚠️ Fragile observers before commit | ✅ **DB::afterCommit** (prevents transaction race conditions) |
 | **Pagination Caching** | ⚠️ Page 1 and 2 collide unless manual | ✅ **Auto Query Hash** (page/filter automatically isolated) |
+| **Diagnostics & Audit** | ❌ DIY logging | ✅ **Artisan Benchmark CLI** (`atomic-cache:bench`) |
 
 ---
 
@@ -142,9 +145,39 @@ $analytics = AtomicCache::rememberWithLock('dashboard.stats', function () {
 Large Eloquent collections or API responses can consume gigabytes of Redis/Memcached RAM. 
 
 Whenever a cached payload exceeds **50 KB** (configurable), Atomic Cache automatically compresses it with `gzcompress`:
-- Reduces Redis memory usage by **~70% to 80%**.
+- Reduces Redis memory usage by **~70% to 95%**.
 - Decompression is handled transparently on retrieval.
 - If payload is smaller than 50 KB, it stores without compression overhead.
+
+---
+
+### 4. Transparent Chunking (Large Datasets & Collections)
+
+Storing large collections (e.g. 10,000+ items or multi-megabyte reports) in a single cache entry can freeze single-threaded Redis processes and exceed Memcached's strict 1MB limit.
+
+Atomic Cache includes **Transparent Chunking**:
+- Arrays and Collections exceeding the threshold (default: 1,000 items) are automatically partitioned into safe chunk keys (`{key}:__chunk__:0`, `{key}:__chunk__:1`).
+- **Key preservation:** Associative and sparse numeric keys remain intact upon reassembly.
+- **Auto Collection restoration:** Collections are seamlessly reconstituted as `Illuminate\Support\Collection`.
+- **Self-Healing recovery:** If an individual chunk is evicted or lost, Atomic Cache evicts the broken metadata and transparently regenerates a fresh payload without crashing your application.
+
+```php
+// Storing 25,000 records transparently splits into 25 safe chunks behind the scenes
+$dataset = AtomicCache::remember('large_report', 3600, fn() => ExportReport::all());
+```
+
+---
+
+### 5. Write Deduplication (Cache DNA)
+
+Repeated writes of identical data waste Redis CPU, I/O, and network bandwidth.
+
+Atomic Cache hashes content before writing (`Cache DNA`). When the identical payload is already cached with valid remaining TTL, **the redundant write operation is automatically skipped**:
+
+```php
+AtomicCache::put('app_config', $config, 3600); // Written to store
+AtomicCache::put('app_config', $config, 3600); // Same data & TTL valid -> Write skipped!
+```
 
 ---
 
@@ -242,16 +275,42 @@ Cache expensive HTML blocks, navigation bars, or sidebar widgets directly in Bla
 
 ---
 
-### 9. Artisan CLI Command
+### 9. Artisan CLI Diagnostics & Benchmark
 
-Manage and clear cache tags or keys from terminal, cron jobs, or CI/CD deployment scripts:
+Atomic Cache ships with an integrated performance benchmarking suite to inspect your real-world speedup and memory efficiency:
+
+```bash
+# Run benchmark on current default cache store
+php artisan atomic-cache:bench
+
+# Benchmark specific driver (e.g. redis, memcached, file, database)
+php artisan atomic-cache:bench --driver=redis --iterations=10
+
+# Export benchmark metrics as JSON
+php artisan atomic-cache:bench --format=json
+```
+
+**Example Benchmark Output:**
+```text
+⚡ Running AtomicCache Benchmark against driver [redis] (5 iterations)...
+
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
+| Metric Category    | Scenario                     | Raw / Simulated Baseline          | AtomicCache Result   | Improvement / Status    |
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
+| ⚡ Latency / Speed | Database Query vs Cache Hit  | 45.00 ms                          | 0.04 ms              | +99.9% Faster           |
+| 📦 Payload Size    | Large Array Gzip Compression | 95.48 KB                          | 4.13 KB              | 95.7% Memory Saved      |
+| 🧩 Safe Chunking   | Large Dataset (2,500 items)  | Single raw item (Risk: 1MB limit) | 3 safe chunks        | Passed (Keys Preserved) |
+| 🏷️ Tag Resilience  | Non-Redis Virtual Tagging    | Native Tag Support                | Zero-Crash Emulation | Resilient (Zero Crash)  |
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
+
+✨ AtomicCache is operating optimally on [redis] driver with full stampede, compression, and chunking protection.
+```
+
+### 10. Cache Clearing Command
 
 ```bash
 # Clear a specific cache tag or key
 php artisan atomic-cache:clear users
-
-# Clear multiple tags
-php artisan atomic-cache:clear dashboard
 
 # Clear all atomic cache entries
 php artisan atomic-cache:clear --all

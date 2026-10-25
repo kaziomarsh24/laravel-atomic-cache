@@ -366,4 +366,119 @@ class AtomicCacheTest extends TestCase
         $r2 = $service->remember('test_srv_r2', fn() => 'r2_val', 60);
         $this->assertEquals('r2_val', $r2);
     }
+
+    public function test_transparent_chunking_stores_and_reassembles_large_array_preserving_keys(): void
+    {
+        $items = [];
+        for ($i = 1; $i <= 2500; $i++) {
+            $items["key_{$i}"] = "Value #{$i}";
+        }
+
+        AtomicCache::put('big_dataset', $items, 60);
+
+        // Verify underlying storage manifest
+        $store = AtomicCache::getRawStore();
+        $manifest = $store->get('atomic:big_dataset');
+        $this->assertIsArray($manifest);
+        $this->assertTrue($manifest['__ac_chunked'] ?? false);
+        $this->assertEquals(3, $manifest['chunks_count']);
+        $this->assertEquals(2500, $manifest['total_items']);
+
+        // Verify chunk keys exist in underlying store
+        $this->assertTrue($store->has('atomic:big_dataset:__chunk__:0'));
+        $this->assertTrue($store->has('atomic:big_dataset:__chunk__:1'));
+        $this->assertTrue($store->has('atomic:big_dataset:__chunk__:2'));
+
+        // Retrieve and verify data integrity and key preservation
+        $restored = AtomicCache::get('big_dataset');
+        $this->assertIsArray($restored);
+        $this->assertCount(2500, $restored);
+        $this->assertEquals('Value #1', $restored['key_1']);
+        $this->assertEquals('Value #2500', $restored['key_2500']);
+
+        // Verify forget removes both manifest and all chunk keys
+        AtomicCache::forget('big_dataset');
+        $this->assertFalse($store->has('atomic:big_dataset'));
+        $this->assertFalse($store->has('atomic:big_dataset:__chunk__:0'));
+        $this->assertFalse($store->has('atomic:big_dataset:__chunk__:1'));
+        $this->assertFalse($store->has('atomic:big_dataset:__chunk__:2'));
+    }
+
+    public function test_transparent_chunking_with_collection(): void
+    {
+        $items = collect(range(1, 2200))->mapWithKeys(fn($i) => ["item_{$i}" => "Item Data {$i}"]);
+        AtomicCache::put('big_collection', $items, 60);
+
+        $restored = AtomicCache::get('big_collection');
+        $this->assertInstanceOf(\Illuminate\Support\Collection::class, $restored);
+        $this->assertCount(2200, $restored);
+        $this->assertEquals('Item Data 1', $restored->get('item_1'));
+        $this->assertEquals('Item Data 2200', $restored->get('item_2200'));
+
+        AtomicCache::forget('big_collection');
+    }
+
+    public function test_chunking_self_healing_recovers_from_missing_chunk(): void
+    {
+        $items = [];
+        for ($i = 1; $i <= 2500; $i++) {
+            $items["key_{$i}"] = "Value #{$i}";
+        }
+
+        AtomicCache::put('broken_chunked_data', $items, 60);
+
+        // Simulate chunk loss (e.g. eviction or driver memory drop)
+        $store = AtomicCache::getRawStore();
+        $store->forget('atomic:broken_chunked_data:__chunk__:1');
+
+        // remember should detect corrupted/missing chunk, self-heal, and run closure
+        $recovered = AtomicCache::remember('broken_chunked_data', 60, function () {
+            return ['status' => 'healed_fresh_data'];
+        });
+
+        $this->assertEquals(['status' => 'healed_fresh_data'], $recovered);
+        AtomicCache::forget('broken_chunked_data');
+    }
+
+    public function test_write_deduplication_stores_cache_dna(): void
+    {
+        $data = ['name' => 'John Doe', 'role' => 'Admin'];
+        $key = 'dedup_test_' . uniqid();
+
+        $success1 = AtomicCache::put($key, $data, 60);
+        $this->assertTrue($success1);
+
+        // Verify DNA key exists
+        $store = AtomicCache::getRawStore();
+        $this->assertTrue($store->has("atomic:{$key}:__dna__"));
+
+        // Second put with identical data succeeds immediately via deduplication
+        $success2 = AtomicCache::put($key, $data, 60);
+        $this->assertTrue($success2);
+
+        $this->assertEquals($data, AtomicCache::get($key));
+        AtomicCache::forget($key);
+        $this->assertFalse($store->has("atomic:{$key}:__dna__"));
+    }
+
+    public function test_benchmark_command_runs_successfully(): void
+    {
+        $exitCode = \Illuminate\Support\Facades\Artisan::call('atomic-cache:bench', [
+            '--iterations' => 2,
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(0, $exitCode);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        $json = json_decode($output, true);
+
+        $this->assertIsArray($json);
+        $this->assertArrayHasKey('latency', $json);
+        $this->assertArrayHasKey('compression', $json);
+        $this->assertArrayHasKey('chunking', $json);
+        $this->assertArrayHasKey('tagging', $json);
+        $this->assertTrue($json['chunking']['integrity_passed']);
+        $this->assertTrue($json['tagging']['virtual_tagging_resilient']);
+    }
 }
+

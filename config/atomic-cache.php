@@ -77,6 +77,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Transparent Chunking
+    |--------------------------------------------------------------------------
+    |
+    | Automatically splits large datasets (arrays or collections) into smaller
+    | driver-safe chunks to prevent memory overflows and driver limits (Memcached 1MB).
+    | Seamlessly reassembles data upon retrieval with key preservation.
+    |
+    */
+    'chunking' => [
+        'enabled' => env('ATOMIC_CACHE_CHUNKING_ENABLED', true),
+        'threshold' => env('ATOMIC_CACHE_CHUNKING_THRESHOLD', 1000), // minimum items to trigger chunking
+        'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000), // items per chunk
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Write Deduplication (Cache DNA)
+    |--------------------------------------------------------------------------
+    |
+    | Hashes payload before writing. If identical content is already cached with
+    | valid remaining TTL, redundant write operations are skipped to save I/O and CPU.
+    |
+    */
+    'deduplication' => [
+        'enabled' => env('ATOMIC_CACHE_DEDUPLICATION_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Self-Healing Recovery
     |--------------------------------------------------------------------------
     |

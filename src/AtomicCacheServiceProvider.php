@@ -5,6 +5,7 @@ namespace KaziOmar\AtomicCache;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
 use KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper;
+use KaziOmar\AtomicCache\Commands\BenchmarkCommand;
 use KaziOmar\AtomicCache\Commands\ClearAtomicCacheCommand;
 
 class AtomicCacheServiceProvider extends ServiceProvider
@@ -38,6 +39,7 @@ class AtomicCacheServiceProvider extends ServiceProvider
 
             $this->commands([
                 ClearAtomicCacheCommand::class,
+                BenchmarkCommand::class,
             ]);
         }
 

@@ -200,14 +200,14 @@ class AtomicCache
                 return value($default);
             }
 
-            return $this->unpackPayload($raw, $effectiveKey, $tags);
+            return $this->unpackPayload($raw, $effectiveKey, $tags, $repository);
         } catch (Throwable $e) {
             return $this->handleCorruptedCache($effectiveKey, $tags, $e, $default);
         }
     }
 
     /**
-     * Store an item in the cache with automatic compression.
+     * Store an item in the cache with automatic compression, chunking, and write deduplication.
      */
     public function put(string $key, mixed $value, ?int $ttl = null, array $tags = []): bool
     {
@@ -219,15 +219,127 @@ class AtomicCache
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $store = $this->getRawStore();
         $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
-        $packed = $this->packPayload($value);
-
         $repository = $this->getRepository($tags);
 
+        // 1. Write Deduplication (Cache DNA)
+        $dnaKey = "{$effectiveKey}:__dna__";
+        $dna = null;
+        if (config('atomic-cache.deduplication.enabled', true)) {
+            try {
+                $dna = md5(serialize($value));
+                $existingDna = $repository->get($dnaKey);
+                if ($existingDna !== null && $existingDna === $dna && $repository->has($effectiveKey)) {
+                    // Content is identical and already exists in cache: skip write to save I/O and CPU
+                    return true;
+                }
+            } catch (Throwable) {
+                // Ignore DNA serialization failure
+            }
+        }
+
+        // 2. Transparent Chunking (for large arrays or collections)
+        if ($this->shouldChunk($value)) {
+            $success = $this->putChunked($effectiveKey, $value, $ttl, $tags, $repository);
+            if ($success && $dna !== null) {
+                $repository->put($dnaKey, $dna, $ttl);
+            }
+            return $success;
+        }
+
+        // Clean up any legacy chunks if previous entry was chunked
+        $this->cleanExistingChunks($effectiveKey, $repository);
+
+        $packed = $this->packPayload($value);
+
         try {
-            return $repository->put($effectiveKey, $packed, $ttl);
+            $result = $repository->put($effectiveKey, $packed, $ttl);
+            if ($result && $dna !== null) {
+                $repository->put($dnaKey, $dna, $ttl);
+            }
+            return $result;
         } catch (Throwable $e) {
             Log::warning("[AtomicCache] Failed to put key '{$effectiveKey}': " . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Determine if a value should be stored using transparent chunking.
+     */
+    protected function shouldChunk(mixed $value): bool
+    {
+        if (!config('atomic-cache.chunking.enabled', true)) {
+            return false;
+        }
+
+        $items = $value instanceof \Illuminate\Support\Collection ? $value->all() : $value;
+        if (!is_array($items)) {
+            return false;
+        }
+
+        $threshold = (int) config('atomic-cache.chunking.threshold', 1000);
+        $chunkSize = (int) config('atomic-cache.chunking.chunk_size', 1000);
+        $count = count($items);
+
+        return $count >= $threshold && $count > $chunkSize;
+    }
+
+    /**
+     * Store a large collection or array across multiple driver-safe chunk keys.
+     */
+    protected function putChunked(string $effectiveKey, mixed $value, int $ttl, array $tags, Repository $repository): bool
+    {
+        $isCollection = $value instanceof \Illuminate\Support\Collection;
+        $items = $isCollection ? $value->all() : $value;
+        $chunkSize = (int) config('atomic-cache.chunking.chunk_size', 1000);
+
+        // Preserve keys when chunking
+        $chunks = array_chunk($items, $chunkSize, true);
+        $totalChunks = count($chunks);
+
+        // First clean any prior chunks
+        $this->cleanExistingChunks($effectiveKey, $repository);
+
+        try {
+            for ($i = 0; $i < $totalChunks; $i++) {
+                $chunkKey = "{$effectiveKey}:__chunk__:{$i}";
+                $packedChunk = $this->packPayload($chunks[$i]);
+                $stored = $repository->put($chunkKey, $packedChunk, $ttl);
+                if (!$stored) {
+                    throw new \RuntimeException("Failed to store chunk {$i} for key '{$effectiveKey}'");
+                }
+            }
+
+            $manifest = [
+                '__ac_chunked' => true,
+                'chunks_count' => $totalChunks,
+                'total_items' => count($items),
+                'is_collection' => $isCollection,
+            ];
+
+            return $repository->put($effectiveKey, $manifest, $ttl);
+        } catch (Throwable $e) {
+            Log::warning("[AtomicCache] Chunking failed for key '{$effectiveKey}': " . $e->getMessage());
+            $this->cleanExistingChunks($effectiveKey, $repository);
+            return false;
+        }
+    }
+
+    /**
+     * Clean up any existing chunk keys for a given manifest key.
+     */
+    protected function cleanExistingChunks(string $effectiveKey, Repository $repository): void
+    {
+        try {
+            $raw = $repository->get($effectiveKey);
+            if (is_array($raw) && !empty($raw['__ac_chunked'])) {
+                $count = (int) ($raw['chunks_count'] ?? 0);
+                for ($i = 0; $i < $count; $i++) {
+                    $repository->forget("{$effectiveKey}:__chunk__:{$i}");
+                }
+            }
+        } catch (Throwable) {
+            // Ignore errors during chunk cleanup
         }
     }
 
@@ -266,16 +378,20 @@ class AtomicCache
     }
 
     /**
-     * Remove an item from the cache.
+     * Remove an item from the cache and clean up related chunks and DNA hashes.
      */
     public function forget(string $key, array $tags = []): bool
     {
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $store = $this->getRawStore();
         $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
+        $repository = $this->getRepository($tags);
 
         try {
-            return $this->getRepository($tags)->forget($effectiveKey);
+            $this->cleanExistingChunks($effectiveKey, $repository);
+            $repository->forget("{$effectiveKey}:__dna__");
+
+            return $repository->forget($effectiveKey);
         } catch (Throwable $e) {
             Log::warning("[AtomicCache] Failed to forget key '{$effectiveKey}': " . $e->getMessage());
             return false;
@@ -562,30 +678,65 @@ class AtomicCache
     }
 
     /**
-     * Unpack payload with automatic decompression.
+     * Unpack payload with automatic decompression and chunk reassembly.
      */
-    protected function unpackPayload(mixed $raw, string $key, array $tags): mixed
+    protected function unpackPayload(mixed $raw, string $key, array $tags, ?Repository $repository = null): mixed
     {
-        if (!is_array($raw) || !array_key_exists('__ac_compressed', $raw)) {
-            // Legacy or direct raw stored value
+        if (!is_array($raw)) {
             return $raw;
         }
 
-        if ($raw['__ac_compressed'] === true) {
-            $decoded = base64_decode($raw['data']);
-            if ($decoded === false) {
-                throw new \RuntimeException("Corrupted base64 payload for key '{$key}'");
+        // Handle transparent chunking reassembly
+        if (!empty($raw['__ac_chunked'])) {
+            $repository = $repository ?? $this->getRepository($tags);
+            $chunksCount = (int) ($raw['chunks_count'] ?? 0);
+            $restored = [];
+
+            for ($i = 0; $i < $chunksCount; $i++) {
+                $chunkKey = "{$key}:__chunk__:{$i}";
+                $chunkRaw = $repository->get($chunkKey);
+
+                if ($chunkRaw === null) {
+                    throw new \RuntimeException("Missing chunk {$i} of {$chunksCount} for key '{$key}'");
+                }
+
+                $chunkData = $this->unpackPayload($chunkRaw, $chunkKey, $tags, $repository);
+                if (!is_array($chunkData)) {
+                    throw new \RuntimeException("Invalid chunk payload for key '{$key}'");
+                }
+
+                // Preserve associative keys and sparse numeric keys
+                foreach ($chunkData as $k => $v) {
+                    $restored[$k] = $v;
+                }
             }
 
-            $uncompressed = @gzuncompress($decoded);
-            if ($uncompressed === false) {
-                throw new \RuntimeException("Decompression failed for key '{$key}'");
+            if (!empty($raw['is_collection'])) {
+                return collect($restored);
             }
 
-            return unserialize($uncompressed);
+            return $restored;
         }
 
-        return $raw['data'];
+        if (array_key_exists('__ac_compressed', $raw)) {
+            if ($raw['__ac_compressed'] === true) {
+                $decoded = base64_decode($raw['data']);
+                if ($decoded === false) {
+                    throw new \RuntimeException("Corrupted base64 payload for key '{$key}'");
+                }
+
+                $uncompressed = @gzuncompress($decoded);
+                if ($uncompressed === false) {
+                    throw new \RuntimeException("Decompression failed for key '{$key}'");
+                }
+
+                return unserialize($uncompressed);
+            }
+
+            return $raw['data'];
+        }
+
+        return $raw;
     }
 
     /**
@@ -603,7 +754,10 @@ class AtomicCache
 
         if (config('atomic-cache.self_healing.enabled', true)) {
             try {
-                $this->getRepository($tags)->forget($key);
+                $repository = $this->getRepository($tags);
+                $this->cleanExistingChunks($key, $repository);
+                $repository->forget("{$key}:__dna__");
+                $repository->forget($key);
             } catch (Throwable) {
                 // Ignore cleanup error
             }
