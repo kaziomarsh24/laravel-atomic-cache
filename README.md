@@ -38,6 +38,9 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
   - [10. Blade Fragment Caching](#10-blade-fragment-caching)
   - [11. Artisan CLI Diagnostics & Benchmark](#11-artisan-cli-diagnostics--benchmark)
   - [12. Cache Clearing Command](#12-cache-clearing-command)
+  - [13. Eloquent & DB Query Macros (Zero-Key Caching)](#13-eloquent--db-query-macros-zero-key-caching)
+  - [14. Type-Safe Model Tags](#14-type-safe-model-tags)
+  - [15. Model Audit & Invalidation Inspector](#15-model-audit--invalidation-inspector)
 - [Eloquent Model Lifecycle (AutoClearsCache)](#eloquent-model-lifecycle-autoclearscache)
 - [Service & Repository Layer (HasAtomicCache)](#service--repository-layer-hasatomiccache)
   - [Safe Argument Normalization](#safe-argument-normalization)
@@ -318,6 +321,80 @@ php artisan atomic-cache:clear users
 
 # Clear all atomic cache entries
 php artisan atomic-cache:clear --all
+```
+
+---
+
+### 13. Eloquent & DB Query Macros (Zero-Key Caching) ⚡
+
+Cache database queries directly off the Eloquent or Query Builder without writing or remembering cache key strings:
+
+```php
+use App\Models\Product;
+
+// 1. Zero-Key Mode: auto-generates a unique key based on SQL + bindings!
+// Automatically tagged with 'products' and Product::class for auto-invalidation
+$featured = Product::where('status', 'active')->where('featured', 1)->atomicCache(3600);
+
+// 2. Custom Key Mode (Hybrid freedom):
+$bestSellers = Product::where('sales_count', '>', 100)->atomicCache('bestsellers', 7200);
+
+// 3. Single record caching:
+$product = Product::where('slug', $slug)->atomicCacheFirst(3600);
+
+// 4. Works on query relationships & DB facade too:
+$userPosts = $user->posts()->where('published', 1)->atomicCache();
+$stats = DB::table('orders')->where('status', 'completed')->atomicCache(1800);
+```
+
+#### Why it's bulletproof:
+- **Zero Key Collision:** Generates deterministic fingerprint `products:query:md5(SQL + Bindings)`. If query parameters differ, keys are isolated.
+- **Zero Stale Cache:** Every query is automatically tagged with the model's table. When any `Product::create()`, `$product->update()`, or `$product->delete()` occurs, `AutoClearsCache` automatically wipes these queries!
+
+---
+
+### 14. Type-Safe Model Tags
+
+Avoid typo errors and get full IDE autocomplete by passing Model classes or instances directly into `tags()`:
+
+```php
+use App\Models\Product;
+use App\Models\Category;
+
+// Passing Model classes gives you full IDE autocomplete & refactoring safety:
+AtomicCache::tags([Product::class, Category::class])
+    ->remember('featured_catalog', 3600, fn() => ...);
+
+// Passing model instances automatically tags both "products:12" and "products":
+AtomicCache::tags([$product])->remember(...);
+
+// Invalidation also supports type-safe classes:
+AtomicCache::clearTags([Product::class]);
+```
+
+---
+
+### 15. Model Audit & Invalidation Inspector
+
+Inspect your entire application's models and verify cache invalidation tags with the built-in doctor command:
+
+```bash
+php artisan atomic-cache:check
+```
+
+```text
+🔍 Scanning application for Eloquent Models & Cache Tags...
+
++---------------------+-------------------+---------------------------+-----------------------------------+
+| Model Class         | AutoClearsCache   | Primary Invalidation Tags | Related Custom Tags               |
++---------------------+-------------------+---------------------------+-----------------------------------+
+| App\Models\User     | ✅ Enabled        | users, users:{id}         | None (Table only)                 |
+| App\Models\Product  | ✅ Enabled        | products, products:{id}   | homepage_featured, categories:{id}|
+| App\Models\Order    | ⚠️ Missing Trait  | N/A                       | Consider adding AutoClearsCache   |
++---------------------+-------------------+---------------------------+-----------------------------------+
+
+Audit Complete: 2 of 3 models have automatic cache invalidation enabled.
+💡 Tip: Add 'use \KaziOmar\AtomicCache\Traits\AutoClearsCache;' to models to auto-flush cache on commit.
 ```
 
 ---

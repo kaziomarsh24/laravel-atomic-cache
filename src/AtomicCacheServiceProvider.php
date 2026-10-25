@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
 use KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper;
 use KaziOmar\AtomicCache\Commands\BenchmarkCommand;
+use KaziOmar\AtomicCache\Commands\CheckAtomicCacheCommand;
 use KaziOmar\AtomicCache\Commands\ClearAtomicCacheCommand;
 
 class AtomicCacheServiceProvider extends ServiceProvider
@@ -40,10 +41,104 @@ class AtomicCacheServiceProvider extends ServiceProvider
             $this->commands([
                 ClearAtomicCacheCommand::class,
                 BenchmarkCommand::class,
+                CheckAtomicCacheCommand::class,
             ]);
         }
 
         $this->registerBladeDirectives();
+        $this->registerQueryMacros();
+    }
+
+    /**
+     * Register Eloquent and Database query macros for zero-key fluent query caching.
+     */
+    protected function registerQueryMacros(): void
+    {
+        $macro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) {
+            /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
+            $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
+
+            $table = $isEloquent ? $this->getModel()->getTable() : ($this->from ?? 'db');
+            $modelClass = $isEloquent ? get_class($this->getModel()) : null;
+
+            $customKey = null;
+            $effectiveTtl = null;
+
+            if (is_string($keyOrTtl)) {
+                $customKey = $keyOrTtl;
+                $effectiveTtl = $ttl;
+            } elseif (is_numeric($keyOrTtl)) {
+                $effectiveTtl = (int) $keyOrTtl;
+            }
+
+            if ($customKey !== null) {
+                $cacheKey = "{$table}:{$customKey}";
+            } else {
+                $sql = $this->toSql();
+                $bindings = $this->getBindings();
+                $fingerprint = md5($sql . ':' . serialize($bindings));
+                $cacheKey = "{$table}:query:{$fingerprint}";
+            }
+
+            $autoTags = [$table];
+            if ($modelClass) {
+                $autoTags[] = $modelClass;
+            }
+            $allTags = array_merge($autoTags, $tags);
+
+            return \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
+                $cacheKey,
+                $effectiveTtl,
+                fn() => $this->get(),
+                lock: $lock
+            );
+        };
+
+        \Illuminate\Database\Eloquent\Builder::macro('atomicCache', $macro);
+        \Illuminate\Database\Query\Builder::macro('atomicCache', $macro);
+
+        $firstMacro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) {
+            /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
+            $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
+
+            $table = $isEloquent ? $this->getModel()->getTable() : ($this->from ?? 'db');
+            $modelClass = $isEloquent ? get_class($this->getModel()) : null;
+
+            $customKey = null;
+            $effectiveTtl = null;
+
+            if (is_string($keyOrTtl)) {
+                $customKey = $keyOrTtl;
+                $effectiveTtl = $ttl;
+            } elseif (is_numeric($keyOrTtl)) {
+                $effectiveTtl = (int) $keyOrTtl;
+            }
+
+            if ($customKey !== null) {
+                $cacheKey = "{$table}:{$customKey}:first";
+            } else {
+                $sql = $this->toSql();
+                $bindings = $this->getBindings();
+                $fingerprint = md5($sql . ':' . serialize($bindings));
+                $cacheKey = "{$table}:query:first:{$fingerprint}";
+            }
+
+            $autoTags = [$table];
+            if ($modelClass) {
+                $autoTags[] = $modelClass;
+            }
+            $allTags = array_merge($autoTags, $tags);
+
+            return \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
+                $cacheKey,
+                $effectiveTtl,
+                fn() => $this->first(),
+                lock: $lock
+            );
+        };
+
+        \Illuminate\Database\Eloquent\Builder::macro('atomicCacheFirst', $firstMacro);
+        \Illuminate\Database\Query\Builder::macro('atomicCacheFirst', $firstMacro);
     }
 
     /**

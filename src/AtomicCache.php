@@ -38,11 +38,13 @@ class AtomicCache
 
     /**
      * Attach cache tags to the next operation.
+     * Supports strings, Model instances, and Type-Safe Model classes (e.g. Product::class).
      */
     public function tags(array|string $tags): self
     {
         $clone = clone $this;
-        $clone->activeTags = is_array($tags) ? $tags : func_get_args();
+        $raw = is_array($tags) ? $tags : func_get_args();
+        $clone->activeTags = $this->normalizeTags($raw);
         return $clone;
     }
 
@@ -435,10 +437,12 @@ class AtomicCache
     /**
      * Clear all cached keys belonging to the given tags.
      * Works with native tags (Redis/Memcached) and graceful virtual tags (File/Database).
+     * Accepts strings, Model instances, or Type-Safe Model classes.
      */
     public function clearTags(array|string $tags): bool
     {
-        $tagList = is_array($tags) ? $tags : func_get_args();
+        $raw = is_array($tags) ? $tags : func_get_args();
+        $tagList = $this->normalizeTags($raw);
 
         if (empty($tagList)) {
             return false;
@@ -622,6 +626,30 @@ class AtomicCache
     {
         $prefix = config('atomic-cache.prefix', 'atomic');
         return "{$prefix}:__tag_v__:{$tag}";
+    }
+
+    /**
+     * Normalize tags accepting strings, Model instances, or Type-Safe Model class names (e.g. Product::class).
+     */
+    public function normalizeTags(array $tags): array
+    {
+        $normalized = [];
+        foreach ($tags as $tag) {
+            if ($tag instanceof \Illuminate\Database\Eloquent\Model) {
+                $table = $tag->getTable();
+                $id = $tag->getKey();
+                if ($id !== null && $id !== '') {
+                    $normalized[] = "{$table}:{$id}";
+                }
+                $normalized[] = $table;
+            } elseif (is_string($tag) && class_exists($tag) && is_subclass_of($tag, \Illuminate\Database\Eloquent\Model::class)) {
+                // Type-safe model class (e.g. Product::class -> 'products')
+                $normalized[] = (new $tag)->getTable();
+            } elseif (is_string($tag) && !empty($tag)) {
+                $normalized[] = $tag;
+            }
+        }
+        return array_values(array_unique(array_filter($normalized)));
     }
 
     /**

@@ -591,5 +591,78 @@ class AtomicCacheTest extends TestCase
         $this->assertContains('test_posts', $tags);
         $this->assertNotContains('test_posts:', $tags);
     }
+
+    public function test_type_safe_model_class_and_instance_tags(): void
+    {
+        $post = TestPost::create(['title' => 'Type-Safe Tag Post']);
+
+        // 1. Tagging using Model::class string
+        $cached1 = AtomicCache::tags([TestPost::class])->remember('type_safe_class_key', fn() => 'class_data', 60);
+        $this->assertEquals('class_data', $cached1);
+
+        // 2. Tagging using Model instance
+        $cached2 = AtomicCache::tags([$post])->remember('type_safe_instance_key', fn() => 'instance_data', 60);
+        $this->assertEquals('instance_data', $cached2);
+
+        // Invalidate via Model::class
+        AtomicCache::clearTags([TestPost::class]);
+        $this->assertFalse(AtomicCache::tags([TestPost::class])->has('type_safe_class_key'));
+    }
+
+    public function test_eloquent_query_macro_zero_key_and_auto_invalidation(): void
+    {
+        $post = TestPost::create(['title' => 'Macro Post 1']);
+
+        $dbQueries = 0;
+        \Illuminate\Support\Facades\DB::listen(function () use (&$dbQueries) {
+            $dbQueries++;
+        });
+
+        // 1. First execution - executes SQL and stores cache with auto-key
+        $posts1 = TestPost::where('title', 'Macro Post 1')->atomicCache(60);
+        $this->assertCount(1, $posts1);
+        $this->assertEquals('Macro Post 1', $posts1->first()->title);
+        $initialQueries = $dbQueries;
+        $this->assertGreaterThan(0, $initialQueries);
+
+        // 2. Second execution - hits cache, ZERO db queries executed!
+        $posts2 = TestPost::where('title', 'Macro Post 1')->atomicCache(60);
+        $this->assertCount(1, $posts2);
+        $this->assertEquals($initialQueries, $dbQueries);
+
+        // 3. Update the post -> AutoClearsCache fires and wipes query cache automatically!
+        $post->update(['title' => 'Macro Post 1 (Updated)']);
+
+        // 4. Third execution - cache was invalidated, must run fresh SQL query!
+        $posts3 = TestPost::where('title', 'Macro Post 1')->atomicCache(60);
+        $this->assertCount(0, $posts3);
+        $this->assertGreaterThan($initialQueries, $dbQueries);
+    }
+
+    public function test_eloquent_query_macro_custom_key_and_first(): void
+    {
+        TestPost::create(['title' => 'First Post']);
+
+        // Custom key
+        $posts = TestPost::where('title', 'First Post')->atomicCache('custom_active_posts', 60);
+        $this->assertCount(1, $posts);
+
+        // atomicCacheFirst
+        $single = TestPost::where('title', 'First Post')->atomicCacheFirst(60);
+        $this->assertNotNull($single);
+        $this->assertEquals('First Post', $single->title);
+
+        // Base DB query macro
+        $rawCount = \Illuminate\Support\Facades\DB::table('test_posts')->where('title', 'First Post')->atomicCache(60);
+        $this->assertCount(1, $rawCount);
+    }
+
+    public function test_check_atomic_cache_command(): void
+    {
+        $exitCode = \Illuminate\Support\Facades\Artisan::call('atomic-cache:check');
+        $this->assertEquals(0, $exitCode);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        $this->assertStringContainsString('Scanning application for Eloquent Models', $output);
+    }
 }
 
