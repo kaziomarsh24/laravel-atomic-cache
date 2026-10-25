@@ -12,6 +12,7 @@ use KaziOmar\AtomicCache\Traits\HasAtomicCache;
 class TestPost extends Model
 {
     use AutoClearsCache;
+    use \Illuminate\Database\Eloquent\SoftDeletes;
 
     protected $table = 'test_posts';
     protected $guarded = [];
@@ -45,6 +46,7 @@ class AtomicCacheTest extends TestCase
         Schema::create('test_posts', function (Blueprint $table) {
             $table->id();
             $table->string('title');
+            $table->softDeletes();
             $table->timestamps();
         });
     }
@@ -479,6 +481,57 @@ class AtomicCacheTest extends TestCase
         $this->assertArrayHasKey('tagging', $json);
         $this->assertTrue($json['chunking']['integrity_passed']);
         $this->assertTrue($json['tagging']['virtual_tagging_resilient']);
+    }
+
+    public function test_virtual_tagging_is_order_independent(): void
+    {
+        $count = 0;
+        $counterFn = function () use (&$count) {
+            $count++;
+            return "data_{$count}";
+        };
+
+        // 1. First call with tags ['alpha', 'beta']
+        $res1 = AtomicCache::store('file')->tags(['alpha', 'beta'])->remember('order_test_key', $counterFn, 60);
+        $this->assertEquals('data_1', $res1);
+
+        // 2. Second call with reversed order ['beta', 'alpha'] must hit cache, not invoke closure
+        $res2 = AtomicCache::store('file')->tags(['beta', 'alpha'])->remember('order_test_key', $counterFn, 60);
+        $this->assertEquals('data_1', $res2);
+        $this->assertEquals(1, $count, 'Reordered tags must produce an identical cache key and hit existing cache');
+    }
+
+    public function test_auto_clears_cache_trait_on_model_restored(): void
+    {
+        $post = TestPost::create(['title' => 'Soft Delete Title']);
+
+        $count = 0;
+        $val1 = AtomicCache::tags(['test_posts', 'test_posts:' . $post->id])->remember('post_restore_cache', function () use (&$count) {
+            $count++;
+            return "val_{$count}";
+        }, 60);
+        $this->assertEquals('val_1', $val1);
+
+        // Soft delete model -> cache cleared
+        $post->delete();
+
+        // Re-cache while soft deleted
+        $val2 = AtomicCache::tags(['test_posts', 'test_posts:' . $post->id])->remember('post_restore_cache', function () use (&$count) {
+            $count++;
+            return "val_{$count}";
+        }, 60);
+        $this->assertEquals('val_2', $val2);
+
+        // Restore soft-deleted model -> must trigger 'restored' hook and clear cache!
+        $post->restore();
+
+        // Must run callback again because cache was cleared by restored event
+        $val3 = AtomicCache::tags(['test_posts', 'test_posts:' . $post->id])->remember('post_restore_cache', function () use (&$count) {
+            $count++;
+            return "val_{$count}";
+        }, 60);
+        $this->assertEquals('val_3', $val3);
+        $this->assertEquals(3, $count);
     }
 }
 

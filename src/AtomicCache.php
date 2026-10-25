@@ -568,8 +568,9 @@ class AtomicCache
             return $formattedKey;
         }
 
-        // For non-taggable stores (file, database), append hash of virtual tag versions
+        // For non-taggable stores (file, database), append hash of virtual tag versions (ksorted for order-independent hashing)
         $versions = $this->getVirtualTagVersions($tags, $store);
+        ksort($versions);
         return "{$formattedKey}:vt:" . md5(json_encode($versions));
     }
 
@@ -584,6 +585,7 @@ class AtomicCache
             $version = $store->get($tagVersionKey);
             $versions[$tag] = $version !== null ? (int) $version : 1;
         }
+        ksort($versions);
         return $versions;
     }
 

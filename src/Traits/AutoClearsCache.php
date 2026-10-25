@@ -25,6 +25,10 @@ trait AutoClearsCache
         static::deleted(function ($model) {
             $model->clearModelCacheOnCommit();
         });
+
+        static::restored(function ($model) {
+            $model->clearModelCacheOnCommit();
+        });
     }
 
     /**
