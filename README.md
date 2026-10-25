@@ -159,14 +159,17 @@ Atomic Cache introduces a **Virtual Tag Versioning Engine**:
 - Subsequent reads automatically experience a cache miss! **Tag invalidation works in local development without Redis!**
 
 ```php
-// Clear a single model item: flushes tag "users:42"
-AtomicCache::clearItem('users', 42);
+// Fluent tag flush (standard Laravel syntax)
+AtomicCache::tags(['orders'])->flush();
 
-// Clear an entire collection: flushes tag "users"
-AtomicCache::clearCollection('users');
+// Flush specific tags directly
+AtomicCache::flushTags(['dashboard', 'reports']);
 
-// Clear custom tags
-AtomicCache::clearTags(['dashboard', 'reports']);
+// Invalidate a single model item: flushes tag "users:42"
+AtomicCache::forgetItem('users', 42); // alias: clearItem()
+
+// Invalidate an entire collection: flushes tag "users"
+AtomicCache::flushCollection('users'); // alias: clearCollection()
 ```
 
 ---
@@ -305,12 +308,14 @@ class UserService
 
     public function find(int $id)
     {
-        return $this->cacheItem($id, fn() => User::findOrFail($id));
+        // Idiomatic single-item remember (alias: cacheItem)
+        return $this->rememberItem($id, fn() => User::findOrFail($id));
     }
 
     public function getActiveUsers()
     {
-        return $this->cacheCollection('active', fn() => User::where('active', 1)->get());
+        // Idiomatic list remember (alias: cacheCollection or rememberList)
+        return $this->rememberCollection('active', fn() => User::where('active', 1)->get());
     }
 
     public function update(int $id, array $data)
@@ -318,9 +323,9 @@ class UserService
         $user = User::findOrFail($id);
         $user->update($data);
 
-        // Clear both single item and list caches
-        $this->clearItemCache($id);
-        $this->clearCollectionCache();
+        // Standard Laravel terminology: forget single item & flush list
+        $this->forgetItem($id);       // alias: clearItemCache()
+        $this->flushCollection();     // alias: clearCollectionCache()
 
         return $user;
     }

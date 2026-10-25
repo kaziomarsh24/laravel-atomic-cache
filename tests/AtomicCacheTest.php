@@ -295,4 +295,75 @@ class AtomicCacheTest extends TestCase
         $val2 = $service->getAll();
         $this->assertEquals(['item1', 'item2'], $val2);
     }
+
+    public function test_atomic_cache_fluent_tags_flush_and_flush_tags(): void
+    {
+        $tag = 'test_fluent_tag_' . uniqid();
+        AtomicCache::tags([$tag])->put('tagged_item', 'hello', 60);
+        $this->assertEquals('hello', AtomicCache::tags([$tag])->get('tagged_item'));
+
+        // Test fluent tag flush: AtomicCache::tags(['...'])->flush()
+        $flushed = AtomicCache::tags([$tag])->flush();
+        $this->assertTrue($flushed);
+        $this->assertNull(AtomicCache::tags([$tag])->get('tagged_item'));
+
+        // Test flushTags method
+        AtomicCache::tags([$tag])->put('tagged_item2', 'world', 60);
+        $this->assertEquals('world', AtomicCache::tags([$tag])->get('tagged_item2'));
+        AtomicCache::flushTags([$tag]);
+        $this->assertNull(AtomicCache::tags([$tag])->get('tagged_item2'));
+    }
+
+    public function test_service_trait_new_idiomatic_methods_and_aliases(): void
+    {
+        $service = new class {
+            use HasAtomicCache;
+            protected string $cacheResource = 'orders';
+
+            public function getOrder(int $id)
+            {
+                return $this->rememberItem($id, fn() => "Order #{$id}");
+            }
+
+            public function getOrders()
+            {
+                return $this->rememberCollection('all', fn() => ['Order 1', 'Order 2']);
+            }
+
+            public function getOrdersList()
+            {
+                return $this->rememberList('list', fn() => ['Order 1', 'Order 2']);
+            }
+        };
+
+        // 1. rememberItem & forgetItem
+        $order = $service->getOrder(10);
+        $this->assertEquals('Order #10', $order);
+        $this->assertEquals('Order #10', $service->cacheItem(10, fn() => 'New')); // cache hit via alias
+
+        $service->forgetItem(10);
+        $this->assertNull(AtomicCache::tags(['orders:10'])->get('orders:10'));
+
+        // 2. rememberCollection & flushCollection
+        $orders = $service->getOrders();
+        $this->assertEquals(['Order 1', 'Order 2'], $orders);
+
+        $service->flushCollection();
+        // After flush, new closure runs
+        $freshOrders = $service->rememberCollection('all', fn() => ['Fresh Order']);
+        $this->assertEquals(['Fresh Order'], $freshOrders);
+
+        // 3. Backward compatibility aliases
+        $aliasOrder = $service->cacheItem(20, fn() => 'Order #20');
+        $this->assertEquals('Order #20', $aliasOrder);
+        $service->clearItemCache(20);
+        $this->assertNull(AtomicCache::tags(['orders:20'])->get('orders:20'));
+
+        // 4. Flexible remember in service (both orders)
+        $r1 = $service->remember('test_srv_r1', 60, fn() => 'r1_val');
+        $this->assertEquals('r1_val', $r1);
+
+        $r2 = $service->remember('test_srv_r2', fn() => 'r2_val', 60);
+        $this->assertEquals('r2_val', $r2);
+    }
 }

@@ -332,6 +332,32 @@ class AtomicCache
     }
 
     /**
+     * Clear all cached keys belonging to the given tags (Laravel 'flushTags' convention).
+     */
+    public function flushTags(array|string $tags): bool
+    {
+        return $this->clearTags($tags);
+    }
+
+    /**
+     * Flush active tags via chain (AtomicCache::tags(['orders'])->flush())
+     * or flush the underlying raw cache store.
+     */
+    public function flush(): bool
+    {
+        if (!empty($this->activeTags)) {
+            return $this->clearTags($this->activeTags);
+        }
+
+        try {
+            return $this->getRawStore()->flush();
+        } catch (Throwable $e) {
+            Log::warning("[AtomicCache] Raw store flush failed: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Clear a specific single-item cache tag (e.g., 'users:12').
      */
     public function clearItem(string $resource, int|string $id): bool
@@ -340,11 +366,27 @@ class AtomicCache
     }
 
     /**
+     * Idiomatic Laravel alias for clearItem().
+     */
+    public function forgetItem(string $resource, int|string $id): bool
+    {
+        return $this->clearItem($resource, $id);
+    }
+
+    /**
      * Clear an entire resource collection tag (e.g., 'users').
      */
     public function clearCollection(string $resource): bool
     {
         return $this->clearTags([$resource]);
+    }
+
+    /**
+     * Idiomatic Laravel alias for clearCollection().
+     */
+    public function flushCollection(string $resource): bool
+    {
+        return $this->clearCollection($resource);
     }
 
     /**

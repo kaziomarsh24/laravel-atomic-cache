@@ -23,8 +23,12 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool forget(string $key, array $tags = [])
  * @method static bool clear(string $key, array $tags = [])
  * @method static bool clearTags(array|string $tags)
+ * @method static bool flushTags(array|string $tags)
+ * @method static bool flush()
  * @method static bool clearItem(string $resource, int|string $id)
+ * @method static bool forgetItem(string $resource, int|string $id)
  * @method static bool clearCollection(string $resource)
+ * @method static bool flushCollection(string $resource)
  * @method static bool supportsTags(\Illuminate\Contracts\Cache\Repository $store)
  * @method static bool supportsLock(\Illuminate\Contracts\Cache\Repository $store)
  *

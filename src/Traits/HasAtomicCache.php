@@ -96,6 +96,32 @@ trait HasAtomicCache
         );
     }
     /**
+     * Standard Laravel 'remember' style for Service Layer.
+     * Supports both:
+     * - $this->remember('key', 3600, fn() => ...)  // Laravel native order
+     * - $this->remember('key', fn() => ..., 3600)  // Closure-first order
+     */
+    public function remember(
+        string $key,
+        mixed $ttlOrCallback,
+        mixed $callbackOrTtl = null,
+        array $tags = [],
+        bool $lock = false
+    ): mixed {
+        if ($ttlOrCallback instanceof Closure) {
+            $callback = $ttlOrCallback;
+            $ttl = is_int($callbackOrTtl) ? $callbackOrTtl : null;
+        } elseif ($callbackOrTtl instanceof Closure) {
+            $ttl = is_int($ttlOrCallback) ? $ttlOrCallback : null;
+            $callback = $callbackOrTtl;
+        } else {
+            throw new \InvalidArgumentException("[AtomicCache] remember requires a Closure callback.");
+        }
+
+        return $this->rememberCache($key, $callback, $ttl, $tags, $lock);
+    }
+
+    /**
      * Cache an ad-hoc custom key with optional tags and atomic lock protection.
      */
     public function rememberCache(
@@ -116,24 +142,31 @@ trait HasAtomicCache
         );
     }
 
-
     /**
-     * Cache a single resource item by ID with isolated item tag.
+     * Idiomatic name for caching a single resource item by ID.
      */
-    public function cacheItem(int|string $id, Closure $actualCallback, ?int $ttl = null): mixed
+    public function rememberItem(int|string $id, Closure $callback, ?int $ttl = null): mixed
     {
         $resource = $this->getCacheResource();
         $cacheKey = "{$resource}:{$id}";
         $tags = ["{$resource}:{$id}"];
 
-        return AtomicCache::tags($tags)->remember($cacheKey, $actualCallback, $ttl);
+        return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
     }
 
     /**
-     * Cache a collection or list query with collection tag.
+     * Cache a single resource item by ID with isolated item tag (Alias for rememberItem).
+     */
+    public function cacheItem(int|string $id, Closure $actualCallback, ?int $ttl = null): mixed
+    {
+        return $this->rememberItem($id, $actualCallback, $ttl);
+    }
+
+    /**
+     * Idiomatic name for caching a collection or list query.
      * Automatically isolates paginated and filtered query results based on HTTP query parameters.
      */
-    public function cacheCollection(string $key, Closure $actualCallback, ?int $ttl = null, array $extraArgs = []): mixed
+    public function rememberCollection(string $key, Closure $callback, ?int $ttl = null, array $extraArgs = []): mixed
     {
         $resource = $this->getCacheResource();
         $safeArgs = $this->normalizeArguments($extraArgs);
@@ -146,7 +179,23 @@ trait HasAtomicCache
         $cacheKey = "{$resource}:list:{$key}{$queryHash}";
         $tags = [$resource];
 
-        return AtomicCache::tags($tags)->remember($cacheKey, $actualCallback, $ttl);
+        return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
+    }
+
+    /**
+     * Alias for rememberCollection().
+     */
+    public function rememberList(string $key, Closure $callback, ?int $ttl = null, array $extraArgs = []): mixed
+    {
+        return $this->rememberCollection($key, $callback, $ttl, $extraArgs);
+    }
+
+    /**
+     * Cache a collection or list query with collection tag (Alias for rememberCollection).
+     */
+    public function cacheCollection(string $key, Closure $actualCallback, ?int $ttl = null, array $extraArgs = []): mixed
+    {
+        return $this->rememberCollection($key, $actualCallback, $ttl, $extraArgs);
     }
 
     /**
@@ -188,28 +237,60 @@ trait HasAtomicCache
     }
 
     /**
-     * Invalidate cache for a specific item by ID.
+     * Invalidate a single item from cache using Laravel's 'forget' terminology.
+     */
+    public function forgetItem(int|string $id): bool
+    {
+        $resource = $this->getCacheResource();
+        return AtomicCache::forgetItem($resource, $id);
+    }
+
+    /**
+     * Invalidate cache for a specific item by ID (Alias for forgetItem).
      */
     public function clearItemCache(int|string $id): bool
     {
-        $resource = $this->getCacheResource();
-        return AtomicCache::clearItem($resource, $id);
+        return $this->forgetItem($id);
     }
 
     /**
-     * Invalidate cache for the entire collection/resource.
+     * Flush entire collection using Laravel's 'flush' terminology.
+     */
+    public function flushCollection(): bool
+    {
+        $resource = $this->getCacheResource();
+        return AtomicCache::flushCollection($resource);
+    }
+
+    /**
+     * Invalidate cache for the entire collection/resource (Alias for flushCollection).
      */
     public function clearCollectionCache(): bool
     {
-        $resource = $this->getCacheResource();
-        return AtomicCache::clearCollection($resource);
+        return $this->flushCollection();
     }
 
     /**
-     * Invalidate both collection and all related caches for this resource.
+     * Flush all caches related to this service resource.
+     */
+    public function flushAll(): bool
+    {
+        return $this->flushCollection();
+    }
+
+    /**
+     * Invalidate both collection and all related caches for this resource (Alias for flushAll).
      */
     public function clearAllCache(): bool
     {
-        return $this->clearCollectionCache();
+        return $this->flushAll();
+    }
+
+    /**
+     * Invalidate custom tags directly from service.
+     */
+    public function flushTags(string|array $tags): bool
+    {
+        return AtomicCache::flushTags((array) $tags);
     }
 }
