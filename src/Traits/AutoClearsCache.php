@@ -26,9 +26,12 @@ trait AutoClearsCache
             $model->clearModelCacheOnCommit();
         });
 
-        static::restored(function ($model) {
-            $model->clearModelCacheOnCommit();
-        });
+        // Safely register 'restored' event only if the Model uses SoftDeletes
+        if (method_exists(static::class, 'restored')) {
+            static::restored(function ($model) {
+                $model->clearModelCacheOnCommit();
+            });
+        }
     }
 
     /**

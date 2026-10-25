@@ -485,6 +485,7 @@ class AtomicCacheTest extends TestCase
 
     public function test_virtual_tagging_is_order_independent(): void
     {
+        $uniqueKey = 'order_test_key_' . uniqid();
         $count = 0;
         $counterFn = function () use (&$count) {
             $count++;
@@ -492,11 +493,11 @@ class AtomicCacheTest extends TestCase
         };
 
         // 1. First call with tags ['alpha', 'beta']
-        $res1 = AtomicCache::store('file')->tags(['alpha', 'beta'])->remember('order_test_key', $counterFn, 60);
+        $res1 = AtomicCache::store('file')->tags(['alpha', 'beta'])->remember($uniqueKey, $counterFn, 60);
         $this->assertEquals('data_1', $res1);
 
         // 2. Second call with reversed order ['beta', 'alpha'] must hit cache, not invoke closure
-        $res2 = AtomicCache::store('file')->tags(['beta', 'alpha'])->remember('order_test_key', $counterFn, 60);
+        $res2 = AtomicCache::store('file')->tags(['beta', 'alpha'])->remember($uniqueKey, $counterFn, 60);
         $this->assertEquals('data_1', $res2);
         $this->assertEquals(1, $count, 'Reordered tags must produce an identical cache key and hit existing cache');
     }
