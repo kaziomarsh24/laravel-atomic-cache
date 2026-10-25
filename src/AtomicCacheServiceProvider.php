@@ -148,12 +148,14 @@ class AtomicCacheServiceProvider extends ServiceProvider
      */
     protected function registerBladeDirectives(): void
     {
-        Blade::directive('atomicCache', function ($expression) {
-            return "<?php if (\\KaziOmar\\AtomicCache\\Blade\\AtomicCacheBladeHelper::setUp({$expression})): ?>";
+        $helper = AtomicCacheBladeHelper::class;
+
+        Blade::directive('atomicCache', function ($expression) use ($helper) {
+            return "<?php if (\\{$helper}::setUp({$expression})): ?>";
         });
 
-        Blade::directive('endAtomicCache', function () {
-            return "<?php echo \\KaziOmar\\AtomicCache\\Blade\\AtomicCacheBladeHelper::tearDown(); endif; ?>";
+        Blade::directive('endAtomicCache', function () use ($helper) {
+            return "<?php echo \\{$helper}::tearDown(); endif; ?>";
         });
     }
 }
