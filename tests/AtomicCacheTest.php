@@ -664,5 +664,35 @@ class AtomicCacheTest extends TestCase
         $output = \Illuminate\Support\Facades\Artisan::output();
         $this->assertStringContainsString('Scanning application for Eloquent Models', $output);
     }
+
+    public function test_normalize_tags_handles_numeric_and_nested_arrays(): void
+    {
+        $tags = AtomicCache::tags(['orders', [42, 'priority'], 'vip'])->activeTags ?? [];
+
+        // In AtomicCache, activeTags is protected, but we can verify via clearTags
+        $cleared = AtomicCache::clearTags(['orders', [42, 'priority'], 'vip']);
+        $this->assertTrue($cleared);
+
+        // Put and get using numeric and nested tags
+        AtomicCache::tags(['orders', 42])->put('numeric_tag_test', 'success', 60);
+        $this->assertEquals('success', AtomicCache::tags(['orders', 42])->get('numeric_tag_test'));
+
+        AtomicCache::clearTags([42]);
+        $this->assertNull(AtomicCache::tags(['orders', 42])->get('numeric_tag_test'));
+    }
+
+    public function test_query_macro_supports_table_aliases(): void
+    {
+        TestPost::create(['title' => 'Aliased Post']);
+
+        // DB::table with alias 'test_posts as p'
+        $posts = \Illuminate\Support\Facades\DB::table('test_posts as p')->where('title', 'Aliased Post')->atomicCache(60);
+        $this->assertCount(1, $posts);
+        $this->assertEquals('Aliased Post', $posts->first()->title);
+
+        // Cache hit
+        $cachedPosts = \Illuminate\Support\Facades\DB::table('test_posts as p')->where('title', 'Aliased Post')->atomicCache(60);
+        $this->assertCount(1, $cachedPosts);
+    }
 }
 

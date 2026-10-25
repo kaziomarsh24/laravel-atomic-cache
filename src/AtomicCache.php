@@ -634,7 +634,9 @@ class AtomicCache
     public function normalizeTags(array $tags): array
     {
         $normalized = [];
-        foreach ($tags as $tag) {
+        $flattened = \Illuminate\Support\Arr::flatten($tags);
+
+        foreach ($flattened as $tag) {
             if ($tag instanceof \Illuminate\Database\Eloquent\Model) {
                 $table = $tag->getTable();
                 $id = $tag->getKey();
@@ -645,8 +647,8 @@ class AtomicCache
             } elseif (is_string($tag) && class_exists($tag) && is_subclass_of($tag, \Illuminate\Database\Eloquent\Model::class)) {
                 // Type-safe model class (e.g. Product::class -> 'products')
                 $normalized[] = (new $tag)->getTable();
-            } elseif (is_string($tag) && !empty($tag)) {
-                $normalized[] = $tag;
+            } elseif ((is_string($tag) || is_numeric($tag)) && (string) $tag !== '') {
+                $normalized[] = (string) $tag;
             }
         }
         return array_values(array_unique(array_filter($normalized)));

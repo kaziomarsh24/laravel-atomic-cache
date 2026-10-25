@@ -58,7 +58,8 @@ class AtomicCacheServiceProvider extends ServiceProvider
             /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
             $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
 
-            $table = $isEloquent ? $this->getModel()->getTable() : ($this->from ?? 'db');
+            $rawTable = $isEloquent ? $this->getModel()->getTable() : ($this->from ?? 'db');
+            $table = is_string($rawTable) ? preg_split('/\s+as\s+|\s+/i', trim($rawTable))[0] : 'db';
             $modelClass = $isEloquent ? get_class($this->getModel()) : null;
 
             $customKey = null;
@@ -101,7 +102,8 @@ class AtomicCacheServiceProvider extends ServiceProvider
             /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
             $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
 
-            $table = $isEloquent ? $this->getModel()->getTable() : ($this->from ?? 'db');
+            $rawTable = $isEloquent ? $this->getModel()->getTable() : ($this->from ?? 'db');
+            $table = is_string($rawTable) ? preg_split('/\s+as\s+|\s+/i', trim($rawTable))[0] : 'db';
             $modelClass = $isEloquent ? get_class($this->getModel()) : null;
 
             $customKey = null;
