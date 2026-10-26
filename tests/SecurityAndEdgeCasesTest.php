@@ -328,4 +328,47 @@ class SecurityAndEdgeCasesTest extends TestCase
         // Old chunk must be explicitly removed when clean_on_put is opted in
         $this->assertFalse($store->has($chunkKey2));
     }
+
+    /**
+     * Test 10: Virtual tag invalidation during callback execution discards stale cache write (OCC).
+     */
+    public function test_virtual_tag_invalidation_during_callback_discards_stale_cache_write(): void
+    {
+        // 1. First execution: tag is invalidated mid-flight
+        $computed = AtomicCache::tags(['products'])->remember('catalog_key', 3600, function () {
+            // Simulate an event invalidating 'products' tag while this expensive computation is running
+            AtomicCache::clearTags(['products']);
+            return ['items' => ['stale_product_A']];
+        });
+
+        // 2. The computation itself returns to caller
+        $this->assertEquals(['items' => ['stale_product_A']], $computed);
+
+        // 3. CRITICAL: The new virtual tag version must NOT be poisoned with the stale computation
+        $this->assertNull(
+            AtomicCache::tags(['products'])->get('catalog_key'),
+            'Stale data must not be stored under the new virtual tag version if invalidated during computation.'
+        );
+    }
+
+    /**
+     * Test 11: Zero or negative TTL immediately forgets the cached key.
+     */
+    public function test_zero_or_negative_ttl_forgets_item_immediately(): void
+    {
+        AtomicCache::put('zero_ttl_key', 'initial_val', 3600);
+        $this->assertTrue(AtomicCache::has('zero_ttl_key'));
+
+        // Storing with 0 TTL forgets immediately
+        $result = AtomicCache::put('zero_ttl_key', 'new_val', 0);
+        $this->assertTrue($result);
+        $this->assertFalse(AtomicCache::has('zero_ttl_key'));
+
+        // Storing with expired Carbon timestamp forgets immediately
+        AtomicCache::put('expired_carbon_key', 'initial_val_2', 3600);
+        $this->assertTrue(AtomicCache::has('expired_carbon_key'));
+
+        AtomicCache::put('expired_carbon_key', 'new_val_2', now()->subMinute());
+        $this->assertFalse(AtomicCache::has('expired_carbon_key'));
+    }
 }

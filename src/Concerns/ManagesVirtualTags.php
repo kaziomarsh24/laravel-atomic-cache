@@ -138,4 +138,34 @@ trait ManagesVirtualTags
 
         return array_values(array_unique(array_filter($normalized)));
     }
+
+    /**
+     * Get a unique version identifier for the given tags (works with native and virtual tags).
+     * Used for optimistic concurrency control (OCC) to discard stale writes when tags are invalidated mid-flight.
+     */
+    public function getTagVersionIdentifier(array $tags, Repository $store): string
+    {
+        if (empty($tags)) {
+            return '';
+        }
+
+        $normalized = $this->normalizeTags($tags);
+        if (empty($normalized)) {
+            return '';
+        }
+
+        if ($this->supportsTags($store)) {
+            try {
+                $tagged = $store->tags($normalized);
+                if (method_exists($tagged, 'getTags') && method_exists($tagged->getTags(), 'getNamespace')) {
+                    return (string) $tagged->getTags()->getNamespace();
+                }
+            } catch (Throwable) {
+                // Fall back to virtual tag resolution if native tags fail
+            }
+        }
+
+        return $this->resolveKeyForStore('', $normalized, $store);
+    }
+
 }

@@ -69,8 +69,12 @@ trait ManagesLocks
                         return $recheck;
                     }
 
+                    $tagVersionBefore = $this->getTagVersionIdentifier($tags, $store);
                     $value = $callback();
-                    $this->put($key, $value, $ttl, $tags);
+                    $tagVersionAfter = $this->getTagVersionIdentifier($tags, $store);
+                    if ($tagVersionBefore === $tagVersionAfter) {
+                        $this->put($key, $value, $ttl, $tags);
+                    }
                     return $value;
                 } finally {
                     try {
@@ -83,8 +87,12 @@ trait ManagesLocks
         }
 
         // Fallback if lock could not be acquired or driver does not support locks
+        $tagVersionBefore = $this->getTagVersionIdentifier($tags, $store);
         $value = $callback();
-        $this->put($key, $value, $ttl, $tags);
+        $tagVersionAfter = $this->getTagVersionIdentifier($tags, $store);
+        if ($tagVersionBefore === $tagVersionAfter) {
+            $this->put($key, $value, $ttl, $tags);
+        }
         return $value;
     }
 

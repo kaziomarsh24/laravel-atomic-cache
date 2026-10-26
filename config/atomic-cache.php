@@ -89,6 +89,7 @@ return [
         'enabled' => env('ATOMIC_CACHE_CHUNKING_ENABLED', true),
         'threshold' => env('ATOMIC_CACHE_CHUNKING_THRESHOLD', 1000), // minimum items to trigger chunking
         'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000), // items per chunk
+        'max_bytes' => (int) env('ATOMIC_CACHE_CHUNK_MAX_BYTES', 800000), // max bytes per chunk payload (Memcached 1MB safe)
         'clean_on_put' => env('ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT', false), // purge prior chunks on non-chunked put
     ],
 

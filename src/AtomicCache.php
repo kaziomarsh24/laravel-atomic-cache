@@ -201,8 +201,16 @@ class AtomicCache
             return $cached;
         }
 
+        $store = $this->getRawStore();
+        $tagVersionBefore = $this->getTagVersionIdentifier($tags, $store);
+
         $value = $resolvedCallback();
-        $this->put($key, $value, $customTtl, $tags);
+
+        // Discard stale writes if tags were invalidated while callback was running
+        $tagVersionAfter = $this->getTagVersionIdentifier($tags, $store);
+        if ($tagVersionBefore === $tagVersionAfter) {
+            $this->put($key, $value, $customTtl, $tags);
+        }
 
         return $value;
     }
@@ -282,6 +290,9 @@ class AtomicCache
 
         try {
             $parsedTtl = static::parseTtlSeconds($ttl);
+            if ($parsedTtl !== null && $parsedTtl <= 0) {
+                return $this->forget($key, $tags);
+            }
             $ttlSeconds = $this->calculateTtl($parsedTtl);
             $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
             $store = $this->getRawStore();
