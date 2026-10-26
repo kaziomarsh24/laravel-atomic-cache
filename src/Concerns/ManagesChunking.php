@@ -169,19 +169,6 @@ trait ManagesChunking
     protected function refreshKeyTtl(string $effectiveKey, int $ttl, Repository $repository): void
     {
         try {
-            $rawStore = $this->getRawStore();
-
-            // 1. Fast path for Redis: Use native EXPIRE command to avoid network round-trip overhead
-            if (method_exists($rawStore, 'getRedis')) {
-                try {
-                    $rawStore->getRedis()->expire($effectiveKey, $ttl);
-                    return;
-                } catch (Throwable) {
-                    // Fall back to standard repository refresh
-                }
-            }
-
-            // 2. Standard refresh fallback
             $raw = $repository->get($effectiveKey);
             if ($raw !== null) {
                 $repository->put($effectiveKey, $raw, $ttl);
