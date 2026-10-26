@@ -762,10 +762,10 @@
 
                     <div>
                         <h3 class="font-bold text-slate-900 dark:text-white mb-1">
-                            2. Transparent Chunking with MGET Batching
+                            2. Transparent Chunking with Dynamic Sizing &amp; Generation UUIDs
                         </h3>
                         <p class="text-slate-600 dark:text-zinc-400">
-                            Large collections or arrays (1,001+ items) are partitioned into safe chunk keys (<code>{key}:__chunk__:0</code>, <code>1</code>). When fetched, all chunks are retrieved in a single batch request via Redis MGET (or multi-key read on file/database drivers), preventing sequential network roundtrips.
+                            Large collections or arrays (1,000+ items) are partitioned into safe chunk keys (<code>{key}:__chunk__:{generation}:{i}</code>). Chunks are written under a unique generation UUID before the atomic manifest is updated, eliminating torn-read race conditions for concurrent readers. Payloads are dynamically sampled to stay strictly under 800 KB (<code>max_bytes</code>) for Memcached 1MB safety. When fetched, all chunks are retrieved in a single batch request via Redis MGET (or multi-key read on file/database drivers). Prior chunks expire via store TTL, or can be eagerly purged on non-chunked overwrites by opting into <code>clean_on_put</code>.
                         </p>
                     </div>
 
@@ -792,7 +792,25 @@
 
                     <div>
                         <h3 class="font-bold text-slate-900 dark:text-white mb-1">
-                            5. Type-Safe Model Tags
+                            5. Optimistic Concurrency Control (OCC)
+                        </h3>
+                        <p class="text-slate-600 dark:text-zinc-400">
+                            AtomicCache captures tag version tokens before and after invoking remember closures. If another process invalidates tags while a slow computation is executing, the stale result is safely discarded instead of polluting freshly cleared cache keys.
+                        </p>
+                    </div>
+
+                    <div>
+                        <h3 class="font-bold text-slate-900 dark:text-white mb-1">
+                            6. HTTP Query Limits (DoS &amp; Hash Collision Protection)
+                        </h3>
+                        <p class="text-slate-600 dark:text-zinc-400">
+                            Incoming requests with more than 20 query parameters (<code>max_params</code>) or exceeding 2,048 bytes (<code>max_bytes</code>) cleanly bypass the cache, executing directly against the database to protect against hash collision attacks and memory exhaustion.
+                        </p>
+                    </div>
+
+                    <div>
+                        <h3 class="font-bold text-slate-900 dark:text-white mb-1">
+                            7. Type-Safe Model Tags
                         </h3>
                         <p class="text-slate-600 dark:text-zinc-400 mb-2">
                             Pass Model classes directly to eliminate typos and unlock IDE autocompletion &amp; refactoring safety:

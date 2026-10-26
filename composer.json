@@ -61,15 +61,7 @@
         }
     },
     "config": {
-        "sort-packages": true,
-        "policy": {
-            "advisories": {
-                "block": false,
-                "ignore": [
-                    "laravel/framework"
-                ]
-            }
-        }
+        "sort-packages": true
     },
     "minimum-stability": "stable",
     "prefer-stable": true,

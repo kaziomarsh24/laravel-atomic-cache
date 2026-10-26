@@ -217,7 +217,10 @@ Whenever a cached payload exceeds **50 KB** (configurable), Atomic Cache automat
 Storing large collections (e.g. 10,000+ items or multi-megabyte reports) in a single cache entry can freeze single-threaded Redis processes and exceed Memcached's strict 1MB limit.
 
 Atomic Cache includes **Transparent Chunking**:
-- Arrays and Collections exceeding the threshold (1,001+ items or count > chunk_size) are automatically partitioned into safe chunk keys (`{key}:__chunk__:0`, `{key}:__chunk__:1`).
+- Arrays and Collections exceeding the threshold (1,000+ items or count > chunk_size) are automatically partitioned into safe chunk keys (`{key}:__chunk__:{generation}:{i}`).
+- **Generation UUIDs (Zero Torn Reads):** Writes are published under a unique generation UUID before updating the atomic manifest pointer, completely eliminating torn-read race conditions for concurrent readers.
+- **Dynamic Byte-Size Guard (`max_bytes`):** Samples row payloads and dynamically adjusts chunk size so each chunk payload stays under 800 KB (driver-safe for Memcached's 1MB limit).
+- **Orphan Chunk Lifecycle (`clean_on_put`):** Previous generation chunks are cleaned automatically when a new chunked generation is published. On non-chunked overwrites, prior chunks expire naturally via store TTL, or can be eagerly purged by opting into `ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT=true`.
 - **Single-Roundtrip Batch Reassembly:** Chunks are retrieved simultaneously using Laravel's `many()` (Redis MGET or multi-key read on file/database drivers), avoiding sequential network round-trips.
 - **Key preservation:** Associative and sparse numeric keys remain intact upon reassembly.
 - **Auto Collection restoration:** Collections are seamlessly reconstituted as `Illuminate\Support\Collection`.
@@ -580,6 +583,19 @@ When calling `cache()` or `rememberCollection()`, the trait automatically inspec
 - **Cache Fragmentation Prevention (Cloudflare/CDN Style):** Common ad/analytics tracking parameters (`utm_*`, `fbclid`, `gclid`, `ttclid`, `msclkid`, `mc_cid`, `ref`, etc.) are automatically stripped before generating cache keys. When 10,000 visitors arrive from Facebook or Google Ads with unique `?fbclid=...` strings, they all share the exact same cached payload instead of polluting your cache memory with 10,000 duplicate entries!
 
 You can customize or extend ignored query parameters in `config/atomic-cache.php` or by defining `protected array $ignoredQueryParams = ['custom_tracker'];` on your service class.
+
+### HTTP Query Limits (Cache Poisoning & DoS Protection)
+To prevent hash collision attacks, query string pollution, and memory exhaustion, Atomic Cache enforces strict request query limits:
+- **`max_params` (Default: 20):** Requests with more than 20 query parameters automatically bypass the cache and run directly against the database.
+- **`max_bytes` (Default: 2,048 bytes):** Requests with query string payloads exceeding 2KB cleanly bypass caching.
+
+### Optimistic Concurrency Control (OCC Tag Invalidation)
+When computing long-running closures in `remember()`, race conditions can occur if another process invalidates tags mid-flight (e.g. an admin updates inventory while a heavy 3-second report is calculating). 
+
+Atomic Cache enforces **Optimistic Concurrency Control (OCC)**:
+1. Records the tag namespace/version identifier immediately *before* invoking the closure.
+2. Checks the tag version again *after* computation completes.
+3. If tags were flushed or updated while the closure ran, the stale calculated write is safely **discarded** instead of repopulating expired cache keys.
 
 ---
 

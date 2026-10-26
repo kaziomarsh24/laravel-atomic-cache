@@ -1040,6 +1040,15 @@ class AtomicCacheTest extends TestCase
         // 4. Verify cache miss
         $miss = AtomicCache::tags([$tag])->get($key);
         $this->assertNull($miss);
+
+        // 5. Verify Redis tag entries set is purged
+        $rawRedisStore = \Illuminate\Support\Facades\Cache::store('redis')->getStore();
+        if ($rawRedisStore instanceof \Illuminate\Cache\RedisStore) {
+            $prefix = $rawRedisStore->getPrefix();
+            $tagKey = $prefix . "tag:{$tag}:entries";
+            $remaining = (int) $rawRedisStore->connection()->zcard($tagKey);
+            $this->assertEquals(0, $remaining);
+        }
     }
 
     public function test_has_atomic_cache_remember_collection_and_item_respect_caching_enabled_and_per_user(): void

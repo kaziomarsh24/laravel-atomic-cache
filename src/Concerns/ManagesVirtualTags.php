@@ -174,9 +174,14 @@ trait ManagesVirtualTags
      * Works around upstream Laravel 10 incompatibility with phpredis >= 6.1.0
      * where RedisTagSet::entries() starts with cursor '0' instead of null,
      * causing TaggedCache::flush() to silently fail to scan or delete any keys.
+     * On Laravel 11+, native flush is already fixed upstream and executes natively.
      */
     protected function purgeRedisTaggedKeysIfNeeded(Repository $store, array $tagList): void
     {
+        if (!$this->shouldPurgeRedisTaggedKeysDirectly()) {
+            return;
+        }
+
         try {
             $rawStore = method_exists($store, 'getStore') ? $store->getStore() : null;
             if ($rawStore instanceof \Illuminate\Cache\RedisStore) {
@@ -186,9 +191,13 @@ trait ManagesVirtualTags
                 foreach ($tagList as $tag) {
                     $tagKey = $prefix . "tag:{$tag}:entries";
 
-                    // ZRANGE returns all member keys in the set without relying on zscan cursor
-                    $entries = $connection->zrange($tagKey, 0, -1);
-                    if (!empty($entries) && is_array($entries)) {
+                    // Paginate entries in 1,000-key slices to avoid high memory spikes on large sets
+                    while (true) {
+                        $entries = $connection->zrange($tagKey, 0, 999);
+                        if (empty($entries) || !is_array($entries)) {
+                            break;
+                        }
+
                         $keysToDelete = [];
                         foreach ($entries as $entry) {
                             if (is_string($entry) && $entry !== '') {
@@ -197,11 +206,13 @@ trait ManagesVirtualTags
                         }
 
                         if (!empty($keysToDelete)) {
-                            foreach (array_chunk($keysToDelete, 500) as $chunk) {
+                            try {
+                                $connection->unlink(...$keysToDelete);
+                            } catch (Throwable) {
                                 try {
-                                    $connection->del(...$chunk);
+                                    $connection->del(...$keysToDelete);
                                 } catch (Throwable) {
-                                    foreach ($chunk as $singleKey) {
+                                    foreach ($keysToDelete as $singleKey) {
                                         try {
                                             $connection->del($singleKey);
                                         } catch (Throwable) {}
@@ -209,17 +220,45 @@ trait ManagesVirtualTags
                                 }
                             }
                         }
+
+                        $connection->zremrangebyrank($tagKey, 0, count($entries) - 1);
                     }
 
                     try {
-                        $connection->del($tagKey);
-                    } catch (Throwable) {}
+                        $connection->unlink($tagKey);
+                    } catch (Throwable) {
+                        try {
+                            $connection->del($tagKey);
+                        } catch (Throwable) {}
+                    }
                 }
             }
-        } catch (Throwable) {
-            // Best-effort cleanup fallback
+        } catch (Throwable $e) {
+            Log::debug("[AtomicCache] Direct Redis tag purge encountered an exception: " . $e->getMessage());
         }
     }
 
+    /**
+     * Determine if direct Redis tag purging is required.
+     * Only needed on Laravel < 11.0.0 when running PhpRedis >= 6.1.0, where
+     * upstream RedisTagSet::entries() starts with cursor '0' instead of null,
+     * causing TaggedCache::flush() to silently fail to scan or delete any keys.
+     */
+    protected function shouldPurgeRedisTaggedKeysDirectly(): bool
+    {
+        $laravelVersion = function_exists('app') ? app()->version() : null;
+        if ($laravelVersion !== null && version_compare($laravelVersion, '11.0.0', '>=')) {
+            return false;
+        }
+
+        if (!extension_loaded('redis')) {
+            return false;
+        }
+
+        $redisVersion = phpversion('redis');
+        return $redisVersion !== false && version_compare($redisVersion, '6.1.0', '>=');
+    }
+
 }
+
 
