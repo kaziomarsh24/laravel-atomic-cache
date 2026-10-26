@@ -14,7 +14,7 @@
 >
 > *Done! No cache keys to invent. No Observers to register. Automatically cleared on DB commit. Zero crashes on local dev without Redis.*
 
-**Laravel Atomic Cache** is an enterprise-grade caching engine for Laravel. It eliminates cache stampedes (dogpiling) using atomic distributed locks, auto-compresses large payloads by up to 95%, auto-partitions mega datasets across driver-safe chunks, brings zero-crash virtual tagging to File and Database drivers, and guarantees transaction-safe model invalidation (`DB::afterCommit`).
+**Laravel Atomic Cache** is an enterprise-grade caching engine for Laravel. It eliminates cache stampedes (dogpiling) using atomic distributed locks, auto-compresses large payloads by up to 70–80% (depending on payload entropy), auto-partitions mega datasets across driver-safe chunks, brings zero-crash virtual tagging to File and Database drivers, and guarantees transaction-safe model invalidation (`DB::afterCommit`).
 
 ```php
 use App\Models\Product;
@@ -206,7 +206,7 @@ $analytics = AtomicCache::rememberWithLock('dashboard.stats', function () {
 Large Eloquent collections or API responses can consume gigabytes of Redis/Memcached RAM. 
 
 Whenever a cached payload exceeds **50 KB** (configurable), Atomic Cache automatically compresses it with `gzcompress`:
-- Reduces Redis memory usage by **~70% to 95%**.
+- Reduces Redis/Memcached memory usage by up to **70% to 80%** (actual savings depend on payload structure and entropy).
 - Decompression is handled transparently on retrieval.
 - If payload is smaller than 50 KB, it stores without compression overhead.
 
@@ -217,8 +217,8 @@ Whenever a cached payload exceeds **50 KB** (configurable), Atomic Cache automat
 Storing large collections (e.g. 10,000+ items or multi-megabyte reports) in a single cache entry can freeze single-threaded Redis processes and exceed Memcached's strict 1MB limit.
 
 Atomic Cache includes **Transparent Chunking**:
-- Arrays and Collections exceeding the threshold (default: 1,000 items) are automatically partitioned into safe chunk keys (`{key}:__chunk__:0`, `{key}:__chunk__:1`).
-- **Single-Roundtrip Batch Reassembly:** Chunks are retrieved simultaneously using Laravel's `many()` (MGET on Redis), avoiding sequential network round-trips.
+- Arrays and Collections exceeding the threshold (1,001+ items or count > chunk_size) are automatically partitioned into safe chunk keys (`{key}:__chunk__:0`, `{key}:__chunk__:1`).
+- **Single-Roundtrip Batch Reassembly:** Chunks are retrieved simultaneously using Laravel's `many()` (Redis MGET or multi-key read on file/database drivers), avoiding sequential network round-trips.
 - **Key preservation:** Associative and sparse numeric keys remain intact upon reassembly.
 - **Auto Collection restoration:** Collections are seamlessly reconstituted as `Illuminate\Support\Collection`.
 - **Self-Healing recovery:** If an individual chunk is evicted or lost, Atomic Cache evicts the broken metadata and transparently regenerates a fresh payload without crashing your application.
@@ -232,13 +232,14 @@ $dataset = AtomicCache::remember('large_report', 3600, fn() => ExportReport::all
 
 ### 5. Write Deduplication (Cache DNA)
 
-Repeated writes of identical data waste Redis CPU, I/O, and network bandwidth.
+Repeated writes of identical data waste CPU cycles on serialization and compression.
 
-Atomic Cache hashes content before writing (`Cache DNA`). When the identical payload is already cached with valid remaining TTL, **the redundant re-serialization is skipped while safely refreshing the TTL in the cache store**:
+Atomic Cache includes an optional deduplication engine (`ATOMIC_CACHE_DEDUPLICATION_ENABLED=false` by default). When enabled, it hashes content before writing (`Cache DNA`). When the identical payload is already cached with valid remaining TTL, **it skips CPU-intensive gzip compression and chunk re-splitting, refreshing the existing TTL in the store**:
 
 ```php
-AtomicCache::put('app_config', $config, 3600); // Serialized & written to store
-AtomicCache::put('app_config', $config, 7200); // Same data -> Heavy serialization skipped & TTL extended to 7200s!
+// With ATOMIC_CACHE_DEDUPLICATION_ENABLED=true:
+AtomicCache::put('app_config', $config, 3600); // Compressed & written to store
+AtomicCache::put('app_config', $config, 7200); // Same data -> Compression & chunk-splitting skipped, TTL extended to 7200s!
 ```
 
 ---
@@ -249,9 +250,9 @@ In Laravel, calling `Cache::tags(['users'])` on `file` or `database` cache drive
 
 Atomic Cache introduces a **Virtual Tag Versioning Engine**:
 - On Redis / Memcached: Uses native high-performance driver tags.
-- On File / Database / SQLite / Array: Tracks atomic version counters per tag (e.g. `_tag_v:users = 1`).
-- When `clearTags(['users'])` is called, it increments the tag version to `2`.
-- Subsequent reads automatically experience a cache miss! **Tag invalidation works in local development without Redis!**
+- On File / Database / SQLite / Array: Tracks atomic UUID version tokens per tag in the cache store.
+- When `clearTags(['users'])` is called, it generates a fresh UUID token in the store atomically.
+- Subsequent reads experience an instant cache miss in 0ms without running slow directory scans or SQL deletes. *(Note: On Redis/Memcached, orphan entries expire via driver TTL. On local file driver, orphan cache files remain on disk until their TTL expires or until `artisan cache:clear` / prune is run).*
 
 ```php
 // Fluent tag flush (standard Laravel syntax)
@@ -273,13 +274,13 @@ AtomicCache::flushCollection('users'); // alias: clearCollection()
 
 If you cache 1,000 keys for 3,600 seconds, they will all expire at the exact same microsecond, causing a sudden CPU and database spike.
 
-`withJitter` adds a small random variance (e.g. ±5%) to the TTL:
+`withJitter` adds a small random variance (e.g. ±5%) to the TTL. The method accepts a decimal fraction (e.g. `0.05` for ±5%, or `0.10` for ±10%), whereas the `ATOMIC_CACHE_JITTER_PERCENTAGE=5` .env variable takes an integer percentage:
 
 ```php
 // TTL of 3600s will randomly vary between 3420s and 3780s
 AtomicCache::withJitter()->remember('feed.popular', fn() => getFeed(), 3600);
 
-// Or pass an explicit variance (e.g. 10%)
+// Or pass an explicit variance (e.g. 10% fraction: 0.10)
 AtomicCache::withJitter(0.10)->remember('feed.popular', fn() => getFeed(), 3600);
 ```
 
@@ -323,7 +324,8 @@ $data = AtomicCache::store('redis')
 Cache expensive HTML blocks, navigation bars, or sidebar widgets directly in Blade templates:
 
 ```blade
-@atomicCache('sidebar_categories', 3600)
+{{-- Caches rendered HTML for 3600s, tagged with 'categories' --}}
+@atomicCache('sidebar_categories', 3600, ['categories'])
     <div class="sidebar">
         @foreach(\App\Models\Category::with('subcategories')->get() as $category)
             <h3>{{ $category->name }}</h3>
@@ -334,6 +336,8 @@ Cache expensive HTML blocks, navigation bars, or sidebar widgets directly in Bla
     </div>
 @endAtomicCache
 ```
+
+> ⚠️ **Important Security & Scope Note:** Blade fragment caching is global across all visitors by default. Never cache personalized or user-specific content (such as logged-in user names, personal carts, or `@csrf` tokens) in a generic fragment block. If user-scoping is needed, append the user ID to the cache key (e.g. `@atomicCache('user_nav_' . auth()->id(), 3600)`).
 
 ---
 
@@ -403,8 +407,9 @@ $stats = DB::table('orders')->where('status', 'completed')->atomicCache(1800);
 ```
 
 #### Why it's bulletproof:
-- **Zero Key Collision:** Generates deterministic fingerprint `products:query:md5(SQL + Bindings)`. If query parameters differ, keys are isolated.
-- **Zero Stale Cache:** Every query is automatically tagged with the model's table. When any `Product::create()`, `$product->update()`, or `$product->delete()` occurs, `AutoClearsCache` automatically wipes these queries!
+- **Zero Key Collision:** Generates deterministic fingerprint `products:query:md5(SQL + Bindings + Model + EagerLoads)`. If query parameters or eager relations differ, keys are isolated.
+- **Automatic Join Tagging:** When queries join multiple tables (e.g. `users` join `orders`), AtomicCache automatically attaches both table tags, invalidating the cached result whenever either table changes. *(Note: Standard `join()` and `leftJoin()` methods are detected automatically; subqueries and `joinRaw()` should have additional tags passed explicitly in the `$tags` parameter).*
+- **Zero Stale Cache:** Every query is automatically tagged with the model's table. When any `Product::create()`, `$product->update()`, `$product->decrement()`, or `$product->delete()` occurs, `AutoClearsCache` automatically wipes these queries!
 
 ---
 
@@ -492,11 +497,13 @@ class User extends Model
 }
 ```
 
-When `$user->save()` or `$user->delete()` executes:
-1. Waits for `DB::commit()` (if transaction rolls back, cache is untouched).
-2. Automatically invalidates single item tag: `users:{id}`.
-3. Automatically invalidates collection tag: `users`.
-4. Automatically invalidates related tags: `dashboard`, `admin_stats`.
+When `$user->save()`, `$user->update()`, `$user->decrement()`, `$user->increment()`, or `$user->delete()` executes:
+1. `AutoClearsCache` listens to model `created`, `updated`, `deleted`, and `restored` events.
+2. Defers invalidation to `DB::afterCommit` (if transaction rolls back, cache is untouched).
+3. Automatically invalidates single item tag: `users:{id}`.
+4. Automatically invalidates collection tag: `users`.
+5. Automatically invalidates related tags: `dashboard`, `admin_stats`.
+*(Note: Direct mass database queries that bypass Eloquent models entirely like `DB::table('users')->decrement(...)` or `User::where(...)->update(...)` do not fire model events; call `AtomicCache::clearTags('users')` for those).*
 
 ---
 
@@ -704,9 +711,9 @@ return [
         'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000), // items per chunk
     ],
 
-    // Write deduplication (skips rewriting unchanged payloads)
+    // Write deduplication (skips compression & chunk re-splitting if identical content is cached)
     'deduplication' => [
-        'enabled' => env('ATOMIC_CACHE_DEDUPLICATION_ENABLED', true),
+        'enabled' => env('ATOMIC_CACHE_DEDUPLICATION_ENABLED', false),
     ],
 
     // Self-healing from corrupted cache payloads
@@ -739,7 +746,7 @@ return [
 | `ATOMIC_CACHE_CHUNKING_ENABLED` | `true` | Auto-partition large datasets into safe chunk keys |
 | `ATOMIC_CACHE_CHUNKING_THRESHOLD` | `1000` | Minimum item count required to trigger chunking |
 | `ATOMIC_CACHE_CHUNK_SIZE` | `1000` | Item count per partitioned chunk |
-| `ATOMIC_CACHE_DEDUPLICATION_ENABLED`| `true` | Skip redundant cache writes when payload is unchanged |
+| `ATOMIC_CACHE_DEDUPLICATION_ENABLED`| `false` | Opt-in DNA hashing: skips compression and chunk re-splitting if identical content is cached |
 | `ATOMIC_CACHE_JITTER_ENABLED` | `false` | Enable TTL variance globally |
 | `ATOMIC_CACHE_JITTER_PERCENTAGE` | `5` | Jitter variance percentage (±5%) |
 

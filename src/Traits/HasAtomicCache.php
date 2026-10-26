@@ -209,7 +209,23 @@ trait HasAtomicCache
             if ($arg instanceof Closure) {
                 try {
                     $ref = new \ReflectionFunction($arg);
-                    return 'Closure:' . md5($ref->getFileName() . ':' . $ref->getStartLine() . ':' . $ref->getEndLine());
+                    $staticVars = $ref->getStaticVariables();
+                    $staticHash = '';
+                    if (!empty($staticVars)) {
+                        $simpleStatic = [];
+                        foreach ($staticVars as $k => $v) {
+                            if (is_scalar($v) || $v === null) {
+                                $simpleStatic[$k] = $v;
+                            } elseif (is_object($v) && method_exists($v, 'getKey')) {
+                                $simpleStatic[$k] = get_class($v) . ':' . $v->getKey();
+                            } else {
+                                $simpleStatic[$k] = gettype($v);
+                            }
+                        }
+                        ksort($simpleStatic);
+                        $staticHash = ':' . md5(serialize($simpleStatic));
+                    }
+                    return 'Closure:' . md5($ref->getFileName() . ':' . $ref->getStartLine() . ':' . $ref->getEndLine()) . $staticHash;
                 } catch (\Throwable) {
                     return 'Closure';
                 }

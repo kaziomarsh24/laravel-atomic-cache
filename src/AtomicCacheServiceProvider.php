@@ -47,6 +47,12 @@ class AtomicCacheServiceProvider extends ServiceProvider
 
         $this->registerBladeDirectives();
         $this->registerQueryMacros();
+
+        if (method_exists($this->app, 'terminating')) {
+            $this->app->terminating(function () {
+                AtomicCacheBladeHelper::reset();
+            });
+        }
     }
 
     /**

@@ -5,6 +5,7 @@ namespace KaziOmar\AtomicCache\Tests;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper;
 use KaziOmar\AtomicCache\Facades\AtomicCache;
 use KaziOmar\AtomicCache\Traits\AutoClearsCache;
 use KaziOmar\AtomicCache\Traits\HasAtomicCache;
@@ -51,6 +52,7 @@ class AtomicCacheTest extends TestCase
         Schema::create('test_posts', function (Blueprint $table) {
             $table->id();
             $table->string('title');
+            $table->integer('stock')->default(10);
             $table->softDeletes();
             $table->timestamps();
         });
@@ -455,6 +457,8 @@ class AtomicCacheTest extends TestCase
 
     public function test_write_deduplication_stores_cache_dna(): void
     {
+        config(['atomic-cache.deduplication.enabled' => true]);
+
         $data = ['name' => 'John Doe', 'role' => 'Admin'];
         $key = 'dedup_test_' . uniqid();
 
@@ -847,6 +851,121 @@ class AtomicCacheTest extends TestCase
             ->atomicCache(60);
 
         $this->assertCount(2, $newPosts);
+    }
+
+    public function test_model_decrement_automatically_clears_cache_via_updated_event(): void
+    {
+        $post = TestPost::create(['title' => 'Stock Post', 'stock' => 10]);
+
+        // Cache the query
+        $cachedStock = TestPost::where('id', $post->id)->atomicCache(60)->first()->stock;
+        $this->assertEquals(10, $cachedStock);
+
+        // Call decrement on model instance (fires updating/updated event)
+        $post->decrement('stock', 2);
+
+        // Verify that cache was automatically cleared and fresh database stock (8) is retrieved
+        $freshStock = TestPost::where('id', $post->id)->atomicCache(60)->first()->stock;
+        $this->assertEquals(8, $freshStock);
+    }
+
+    public function test_closure_with_captured_variables_generates_distinct_hashes(): void
+    {
+        $service = new class {
+            use HasAtomicCache;
+            public function runWithClosure($closure)
+            {
+                return $this->cache('func', func_get_args(), $closure);
+            }
+        };
+
+        $val1 = 10;
+        $val2 = 20;
+
+        $c1 = function () use ($val1) {
+            return "val_{$val1}";
+        };
+
+        $c2 = function () use ($val2) {
+            return "val_{$val2}";
+        };
+
+        $res1 = $service->runWithClosure($c1);
+        $res2 = $service->runWithClosure($c2);
+
+        $this->assertEquals('val_10', $res1);
+        $this->assertEquals('val_20', $res2);
+    }
+
+    public function test_blade_helper_reset_unwinds_stack_and_buffers(): void
+    {
+        $initialLevel = ob_get_level();
+
+        // Simulate an open Blade cache block that threw an exception before endAtomicCache
+        AtomicCacheBladeHelper::setUp('unclosed_key_' . uniqid(), 60);
+        $this->assertGreaterThan($initialLevel, ob_get_level());
+
+        // Reset should unwind buffer safely
+        AtomicCacheBladeHelper::reset();
+        $this->assertEquals($initialLevel, ob_get_level());
+    }
+
+    public function test_redis_store_chunking_and_tag_invalidation(): void
+    {
+        if (!extension_loaded('redis')) {
+            $this->markTestSkipped('Redis PHP extension is not loaded.');
+        }
+
+        $host = env('REDIS_HOST', '127.0.0.1');
+        $port = (int) env('REDIS_PORT', 6379);
+
+        try {
+            $redis = new \Redis();
+            $connected = @$redis->connect($host, $port, 1.0);
+            if (!$connected) {
+                $this->markTestSkipped('Redis server is not reachable.');
+            }
+        } catch (\Throwable) {
+            $this->markTestSkipped('Cannot connect to Redis server.');
+        }
+
+        config([
+            'cache.default' => 'redis',
+            'cache.stores.redis' => [
+                'driver' => 'redis',
+                'connection' => 'cache',
+            ],
+            'database.redis.cache' => [
+                'host' => $host,
+                'port' => $port,
+                'database' => '1',
+            ],
+            'atomic-cache.chunking.enabled' => true,
+            'atomic-cache.chunking.threshold' => 100,
+            'atomic-cache.chunking.chunk_size' => 50,
+        ]);
+
+        $data = [];
+        for ($i = 0; $i < 200; $i++) {
+            $data["key_{$i}"] = "value_{$i}";
+        }
+
+        $key = 'redis_chunked_test_' . uniqid();
+        $tag = 'redis_tag_' . uniqid();
+
+        // 1. Store chunked data with tag on Redis
+        AtomicCache::tags([$tag])->put($key, $data, 60);
+
+        // 2. Retrieve chunked data with tag (tests many() batch reassembly on tagged Redis)
+        $retrieved = AtomicCache::tags([$tag])->get($key);
+        $this->assertEquals($data, $retrieved);
+
+        // 3. Invalidate tag
+        AtomicCache::clearTags([$tag]);
+
+        // 4. Verify cache miss
+        $miss = AtomicCache::tags([$tag])->get($key);
+        $this->assertNull($miss);
     }
 }
 

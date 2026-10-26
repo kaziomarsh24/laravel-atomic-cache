@@ -516,7 +516,7 @@
                         Automatic Query &amp; Join Invalidation
                     </h4>
                     <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
-                        The query macro generates deterministic fingerprints incorporating SQL, bindings, and active eager loads (<code>with()</code>). If your query joins multiple tables (e.g. <code>users</code> join <code>orders</code>), AtomicCache automatically tags both tables so updates to either model safely invalidate the cached query.
+                        The query macro generates deterministic fingerprints incorporating SQL, bindings, and active eager loads (<code>with()</code>). If your query joins multiple tables using standard Query Builder methods (e.g. <code>join()</code>, <code>leftJoin()</code>), AtomicCache automatically tags all joined tables so updates to any joined model safely invalidate the cached query. <em>Note:</em> Tables referenced in subqueries or raw SQL (<code>joinRaw()</code>) are not statically parsed; specify any extra tags explicitly in the <code>$tags</code> argument.
                     </p>
                 </div>
             </section>
@@ -567,7 +567,7 @@
     });
 }</code></pre>
                     <div class="px-4 py-2.5 bg-slate-100 dark:bg-zinc-800/80 border-t border-slate-200 dark:border-zinc-800 text-[11px] text-slate-600 dark:text-zinc-400">
-                        <strong>Note:</strong> Eloquent lifecycle events fire on <code>$model-&gt;save()</code>, <code>create()</code>, and <code>delete()</code>. If using direct query methods like <code>$product-&gt;decrement('stock', 1)</code> or mass updates, manually call <code>AtomicCache::clearTags(['products'])</code>.
+                        <strong>Note:</strong> AutoClearsCache listens to model <code>created</code>, <code>updated</code> (including <code>$model-&gt;decrement()</code> / <code>$model-&gt;increment()</code>), and <code>deleted</code> events. Only direct database mass queries that bypass Eloquent models entirely (e.g. <code>DB::table('products')-&gt;decrement()</code> or <code>Product::where(...)-&gt;update()</code>) require manually calling <code>AtomicCache::clearTags(['products'])</code>.
                     </div>
                 </div>
             </section>
@@ -750,7 +750,10 @@
             <span class="token-keyword">@endforeach</span>
         <span class="token-keyword">@endforeach</span>
     <span class="token-operator">&lt;</span>/<span class="token-keyword">div</span><span class="token-operator">&gt;</span>
-<span class="token-keyword">@endAtomicCache</span></code></pre>
+                </div>
+
+                <div class="px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-lg text-xs text-amber-900 dark:text-amber-300 leading-relaxed">
+                    <strong>⚠️ Important Security Note:</strong> Blade fragment caching is global across all visitors. Never cache personalized or user-specific content (such as logged-in user names, personal shopping carts, or <code>@csrf</code> tokens) in a generic fragment block. If user-scoping is needed, append the user ID to the cache key (e.g. <code>@atomicCache('user_nav_' . auth()->id(), 3600)</code>).
                 </div>
             </section>
 
@@ -766,7 +769,7 @@
                             1. Auto Payload Compression (Gzip > 50KB)
                         </h3>
                         <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
-                            When serialized data exceeds 50KB, AtomicCache compresses it using <code>gzcompress</code> before storing. This reduces Redis memory consumption by 70% to 95% and decompresses transparently on retrieval.
+                            When serialized data exceeds 50KB, AtomicCache compresses it using <code>gzcompress</code> before storing. This reduces Redis/Memcached memory consumption by up to 70–80% (actual savings depend on payload structure and entropy) and decompresses transparently on retrieval.
                         </p>
                     </div>
 
@@ -775,7 +778,7 @@
                             2. Transparent Chunking with MGET Batching
                         </h3>
                         <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
-                            Large collections (1,000+ items) are partitioned into safe chunks (<code>{key}:__chunk__:0</code>, <code>1</code>). When fetched, all chunks are retrieved in a single batch request via Redis MGET, preventing sequential network roundtrips.
+                            Large collections or arrays (1,001+ items) are partitioned into safe chunk keys (<code>{key}:__chunk__:0</code>, <code>1</code>). When fetched, all chunks are retrieved in a single batch request via Redis MGET (or multi-key read on file/database drivers), preventing sequential network roundtrips.
                         </p>
                     </div>
 
@@ -784,7 +787,7 @@
                             3. Write Deduplication (Cache DNA)
                         </h3>
                         <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
-                            Payloads are hashed before writing. If identical data is already stored, AtomicCache skips redundant store writes and payload compression, refreshing the expiration TTL on the existing item and chunks.
+                            Payloads are hashed before writing (Cache DNA). When enabled (<code>ATOMIC_CACHE_DEDUPLICATION_ENABLED=true</code>), if identical content is already cached with valid remaining TTL, AtomicCache skips CPU-intensive gzip compression and chunk re-splitting, refreshing the expiration TTL on the existing item and chunks in the cache store.
                         </p>
                     </div>
 
@@ -793,7 +796,7 @@
                             4. Expiry Jitter (withJitter)
                         </h3>
                         <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
-                            Prevents herd expiry spikes when thousands of keys share the same TTL by adding random variance (±5%):
+                            Prevents herd expiry spikes when thousands of keys share the same TTL by adding random variance. Note: The fluent method takes a decimal fraction (e.g. <code>0.05</code> for ±5% or <code>0.10</code> for ±10%), whereas the <code>ATOMIC_CACHE_JITTER_PERCENTAGE</code> .env variable accepts an integer percentage (e.g. <code>5</code>):
                         </p>
                         <pre class="p-2.5 rounded bg-[#0d1117] text-[12px] font-mono text-[#c9d1d9] overflow-x-auto"><code>AtomicCache::withJitter(0.05)->remember('popular_feed', fn() => getFeed(), 3600);</code></pre>
                     </div>
@@ -828,10 +831,10 @@ AtomicCache::clearTags([Product::class, 42]);</code></pre>
                 </p>
 
                 <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-700 dark:text-zinc-300 mb-4">
-                    <li>Each tag maintains a unique version token in the store: <code>atomic:__tag_v__:{tag}</code>.</li>
+                    <li>Each tag maintains a unique UUID version token in the store: <code>atomic:__tag_v__:{tag}</code>.</li>
                     <li>Keys incorporate an MD5 hash of their sorted tag tokens: <code>{key}:vt:md5(sorted_tokens)</code>.</li>
-                    <li>Calling <code>AtomicCache::clearTags(['products'])</code> rotates the tag to a fresh UUID token.</li>
-                    <li>Existing cached entries become instant cache misses in 0 milliseconds, with zero files deleted or slow SQL queries.</li>
+                    <li>Calling <code>AtomicCache::clearTags(['products'])</code> generates a fresh UUID token in the store atomically.</li>
+                    <li>Existing cached entries become instant cache misses in 0 milliseconds without running slow directory scans or SQL deletes. <em>Note on File Driver:</em> On Redis/Memcached, orphan entries expire automatically via store TTL. On the local file driver, orphan cache files remain on disk until their TTL expires or until <code>php artisan cache:clear</code> / cache prune is executed.</li>
                 </ol>
             </section>
 
@@ -966,7 +969,7 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">forever($key, $value, $tags = [])</td>
                                 <td class="p-3 font-mono">bool</td>
-                                <td class="p-3">Store item with no expiration (useful for static lookup dictionaries).</td>
+                                <td class="p-3">Store item with 10-year long-term TTL (315,360,000s) for permanent lookup dictionaries.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">pull($key, $default = null, $tags = [])</td>
@@ -1032,7 +1035,7 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::withJitter($percentage = 0.05)</td>
                                 <td class="p-3 font-mono">AtomicCache</td>
-                                <td class="p-3">Add random variance (±5%) to TTL to prevent simultaneous expiry spikes.</td>
+                                <td class="p-3">Add random variance (accepts decimal fraction e.g. 0.05 for ±5%, or 0.10 for ±10%; note .env uses integer percentage 5).</td>
                             </tr>
 
                             <!-- Query Macros -->
@@ -1178,8 +1181,8 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_DEDUPLICATION_ENABLED</td>
-                                <td class="p-3 font-mono">true</td>
-                                <td class="p-3">Skips redundant store writes and compression when payload is unchanged.</td>
+                                <td class="p-3 font-mono">false</td>
+                                <td class="p-3">Opt-in DNA hashing: skips compression and chunk re-splitting if identical content is cached.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_JITTER_ENABLED</td>

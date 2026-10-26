@@ -50,4 +50,17 @@ class AtomicCacheBladeHelper
 
         return $html;
     }
+
+    /**
+     * Reset and unwind all unclosed buffers and stack (safe for exception recovery and Octane).
+     */
+    public static function reset(): void
+    {
+        while (!empty(static::$stack)) {
+            array_pop(static::$stack);
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+        }
+    }
 }

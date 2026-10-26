@@ -18,7 +18,11 @@ trait AutoClearsCache
      */
     public static function bootAutoClearsCache(): void
     {
-        static::saved(function ($model) {
+        static::created(function ($model) {
+            $model->clearModelCacheOnCommit();
+        });
+
+        static::updated(function ($model) {
             $model->clearModelCacheOnCommit();
         });
 

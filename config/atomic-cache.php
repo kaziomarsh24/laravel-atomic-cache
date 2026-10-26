@@ -101,7 +101,7 @@ return [
     |
     */
     'deduplication' => [
-        'enabled' => env('ATOMIC_CACHE_DEDUPLICATION_ENABLED', true),
+        'enabled' => env('ATOMIC_CACHE_DEDUPLICATION_ENABLED', false),
     ],
 
     /*

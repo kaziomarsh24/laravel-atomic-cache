@@ -227,7 +227,7 @@ class AtomicCache
         // 1. Write Deduplication (Cache DNA)
         $dnaKey = "{$effectiveKey}:__dna__";
         $dna = null;
-        if (config('atomic-cache.deduplication.enabled', true)) {
+        if (config('atomic-cache.deduplication.enabled', false)) {
             try {
                 $dna = md5(serialize($value));
                 $existingDna = $repository->get($dnaKey);

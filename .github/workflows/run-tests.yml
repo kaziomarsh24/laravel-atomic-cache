@@ -18,6 +18,21 @@ jobs:
 
     name: P${{ matrix.php }}
 
+    services:
+      redis:
+        image: redis:alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,7 +41,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mbstring, zlib, pdo, sqlite, pdo_sqlite
+          extensions: mbstring, zlib, pdo, sqlite, pdo_sqlite, redis
           coverage: none
 
       - name: Install dependencies
@@ -34,3 +49,4 @@ jobs:
 
       - name: Execute tests
         run: ./vendor/bin/phpunit
+
