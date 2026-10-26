@@ -64,6 +64,13 @@ class AtomicCacheTest extends TestCase
         });
     }
 
+    protected function tearDown(): void
+    {
+        Schema::dropIfExists('test_posts');
+        Schema::dropIfExists('test_categories');
+        parent::tearDown();
+    }
+
     public function test_can_put_and_get_cached_value(): void
     {
         AtomicCache::put('greeting', 'Hello World', 60);

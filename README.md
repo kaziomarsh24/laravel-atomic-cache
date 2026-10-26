@@ -70,7 +70,7 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 | **Stampede Protection** | ❌ All concurrent requests hit DB | ✅ **Atomic Lock** (1 worker computes, others wait & read) |
 | **Large Payload Size** | ❌ Raw uncompressed serialization | ✅ **Auto Gzip** (>50KB cuts Redis RAM by 70–80%) |
 | **Mega Datasets** | ❌ Fails on 1MB Memcached / Redis freeze | ✅ **Transparent Chunking** (splits safely, preserves keys) |
-| **Redundant Writes** | ❌ Every put hits storage/network | ✅ **Write Deduplication** (skips unchanged payloads) |
+| **Redundant Writes** | ❌ Every put hits storage/network | ✅ **Write Deduplication** (opt-in DNA hashing; skips redundant re-writes) |
 | **Driver Tag Support** | ❌ Crashes on File/Database stores | ✅ **Virtual Tagging** (works across all stores without Redis) |
 | **Corrupted Data** | ❌ Throws crash exception to user | ✅ **Self-Healing** (cleans key, regenerates silently) |
 | **Simultaneous Expiry** | ❌ All keys expire in same second | ✅ **TTL Jitter** (random variance prevents herd spikes) |
@@ -413,7 +413,7 @@ $stats = DB::table('orders')->where('status', 'completed')->atomicCache(1800);
 ```
 
 #### Why it's bulletproof:
-- **Zero Key Collision:** Generates deterministic fingerprint `products:query:md5(SQL + Bindings + Model + EagerLoads)`. If query parameters or eager relations differ, keys are isolated.
+- **Zero Key Collision:** Generates deterministic fingerprint `products:query:sha256(SQL + Bindings + Model + EagerLoads)`. If query parameters or eager relations differ, keys are isolated.
 - **Automatic Join Tagging:** When queries join multiple tables (e.g. `users` join `orders`), AtomicCache automatically attaches both table tags, invalidating the cached result whenever either table changes. *(Note: Standard `join()` and `leftJoin()` methods are detected automatically; subqueries and `joinRaw()` should have additional tags passed explicitly in the `$tags` parameter).*
 - **Zero Stale Cache:** Every query is automatically tagged with the model's table. When any `Product::create()`, `$product->update()`, `$product->decrement()`, or `$product->delete()` occurs, `AutoClearsCache` automatically wipes these queries!
 
@@ -716,6 +716,8 @@ return [
         'enabled' => env('ATOMIC_CACHE_CHUNKING_ENABLED', true),
         'threshold' => env('ATOMIC_CACHE_CHUNKING_THRESHOLD', 1000), // items threshold
         'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000), // items per chunk
+        'max_bytes' => env('ATOMIC_CACHE_CHUNK_MAX_BYTES', 800000), // dynamic byte size ceiling (800KB)
+        'clean_on_put' => env('ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT', false), // purge prior chunks on non-chunked put
     ],
 
     // Write deduplication (skips compression & chunk re-splitting if identical content is cached)
@@ -741,6 +743,12 @@ return [
         'fbclid', 'gclid', 'dclid', 'wbraid', 'gbraid', 'ttclid', 'msclkid',
         'mc_cid', 'mc_eid', '_ga', '_gl', '_gid', 'ref',
     ],
+
+    // HTTP Query Limits (Cache Poisoning & DoS Protection)
+    'query_limits' => [
+        'max_params' => env('ATOMIC_CACHE_QUERY_MAX_PARAMS', 20),
+        'max_bytes' => env('ATOMIC_CACHE_QUERY_MAX_BYTES', 2048),
+    ],
 ];
 ```
 
@@ -760,9 +768,13 @@ return [
 | `ATOMIC_CACHE_CHUNKING_ENABLED` | `true` | Auto-partition large datasets into safe chunk keys |
 | `ATOMIC_CACHE_CHUNKING_THRESHOLD` | `1000` | Minimum item count required to trigger chunking |
 | `ATOMIC_CACHE_CHUNK_SIZE` | `1000` | Item count per partitioned chunk |
+| `ATOMIC_CACHE_CHUNK_MAX_BYTES` | `800000` | Dynamic chunk size threshold (under 800 KB for Memcached) |
+| `ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT` | `false` | When true, non-chunked put purges prior chunk keys. Defaults to `false` for optimal write performance (no extra GET); orphan chunks expire cleanly on TTL. |
 | `ATOMIC_CACHE_DEDUPLICATION_ENABLED`| `false` | Opt-in DNA hashing: skips compression and chunk re-splitting if identical content is cached |
 | `ATOMIC_CACHE_JITTER_ENABLED` | `false` | Enable TTL variance globally |
 | `ATOMIC_CACHE_JITTER_PERCENTAGE` | `5` | Jitter variance percentage (±5%) |
+| `ATOMIC_CACHE_QUERY_MAX_PARAMS` | `20` | Max allowed sanitized HTTP query parameters before bypassing cache |
+| `ATOMIC_CACHE_QUERY_MAX_BYTES` | `2048` | Max allowed serialized query string size before bypassing cache |
 
 ---
 

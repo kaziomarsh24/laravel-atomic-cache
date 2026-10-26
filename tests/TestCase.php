@@ -24,6 +24,13 @@ abstract class TestCase extends Orchestra
 
     protected function getEnvironmentSetUp($app): void
     {
+        $app['config']->set('database.default', 'testing');
+        $app['config']->set('database.connections.testing', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+        ]);
+
         $app['config']->set('cache.default', 'array');
         $app['config']->set('atomic-cache.enabled', true);
     }

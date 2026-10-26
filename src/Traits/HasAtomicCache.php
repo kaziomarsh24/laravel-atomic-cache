@@ -53,10 +53,10 @@ trait HasAtomicCache
 
         // Include sanitized HTTP query parameters (e.g. ?page=2&filter=active) while excluding marketing tracking tags (utm_*, fbclid)
         if ($this->shouldIncludeRequestQuery()) {
-            if ($this->isAbnormalRequestQuery()) {
-                return $callback(); // Bypass cache for abnormal/attack queries to prevent DoS without collisions
-            }
             $sanitizedQuery = $this->getSanitizedRequestQuery();
+            if ($this->isAbnormalQueryPayload($sanitizedQuery)) {
+                return $callback(); // Bypass cache for abnormal/attack queries AFTER sanitization to prevent DoS amplification
+            }
             if (!empty($sanitizedQuery)) {
                 $safeArgs['__query__'] = $sanitizedQuery;
             }
@@ -191,10 +191,10 @@ trait HasAtomicCache
         $safeArgs = $this->normalizeArguments($extraArgs);
 
         if ($this->shouldIncludeRequestQuery()) {
-            if ($this->isAbnormalRequestQuery()) {
-                return $callback(); // Bypass cache for abnormal/attack queries to prevent DoS without collisions
-            }
             $sanitizedQuery = $this->getSanitizedRequestQuery();
+            if ($this->isAbnormalQueryPayload($sanitizedQuery)) {
+                return $callback(); // Bypass cache for abnormal/attack queries AFTER sanitization to prevent DoS amplification
+            }
             if (!empty($sanitizedQuery)) {
                 $safeArgs['__query__'] = $sanitizedQuery;
             }
@@ -356,15 +356,15 @@ trait HasAtomicCache
 
     /**
      * Detect abnormal request query payloads (>20 params or >2048 bytes) that indicate cache pollution attacks.
+     * Evaluated AFTER removing marketing tags and applying allowed query parameter lists to prevent DoS amplification.
      * When detected, AtomicCache bypasses the cache entirely to protect memory without corrupting cache keys.
      */
-    protected function isAbnormalRequestQuery(): bool
+    protected function isAbnormalQueryPayload(array $query): bool
     {
-        if (!request() || empty(request()->query())) {
+        if (empty($query)) {
             return false;
         }
 
-        $query = request()->query();
         if (count($query) > (int) config('atomic-cache.query_limits.max_params', 20)) {
             return true;
         }
@@ -378,6 +378,14 @@ trait HasAtomicCache
         }
 
         return false;
+    }
+
+    /**
+     * Backwards-compatible alias for checking query payload abnormality.
+     */
+    protected function isAbnormalRequestQuery(): bool
+    {
+        return $this->isAbnormalQueryPayload($this->getSanitizedRequestQuery());
     }
 
     /**

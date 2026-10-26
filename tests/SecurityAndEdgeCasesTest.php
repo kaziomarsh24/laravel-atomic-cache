@@ -123,17 +123,18 @@ class SecurityAndEdgeCasesTest extends TestCase
     public function test_query_string_sanitization_does_not_truncate_or_cause_key_collision(): void
     {
         $service = new TestSecurityService();
-        $baseString = str_repeat('a', 250);
+        // Base string of 280 'a's ensures difference occurs at position 281 (> 255 chars)
+        $baseString = str_repeat('a', 280);
 
-        // Request A: 250 'a' + 'XYZ' (total 253)
+        // Request A: 280 'a' + 'XYZ' (total 283 chars)
         $this->app->instance('request', Request::create('/test?filter=' . $baseString . 'XYZ'));
         $resA = $service->fetchWithQuery();
         $this->assertEquals('computed_1', $resA);
 
-        // Request B: 250 'a' + '123' (differs at position 251)
+        // Request B: 280 'a' + '123' (differs at position 281)
         $this->app->instance('request', Request::create('/test?filter=' . $baseString . '123'));
         $resB = $service->fetchWithQuery();
-        $this->assertEquals('computed_2', $resB, 'Distinct long query parameters must not collide into identical cache keys.');
+        $this->assertEquals('computed_2', $resB, 'Queries differing after character 255 must not collide into identical cache keys.');
 
         // Re-request A: should hit cache and NOT re-compute
         $this->app->instance('request', Request::create('/test?filter=' . $baseString . 'XYZ'));
@@ -168,7 +169,7 @@ class SecurityAndEdgeCasesTest extends TestCase
     {
         $service = new TestSecurityService();
 
-        // 1. More than 20 parameters (e.g. 25 parameters)
+        // 1. More than 20 genuine parameters (e.g. 25 parameters)
         $params = [];
         for ($i = 0; $i < 25; $i++) {
             $params["param_{$i}"] = "val_{$i}";
@@ -193,6 +194,28 @@ class SecurityAndEdgeCasesTest extends TestCase
 
         $res4 = $service->fetchWithQuery();
         $this->assertEquals('computed_4', $res4, 'Oversized query payload must bypass cache without throwing exceptions.');
+
+        // 3. Marketing parameters are stripped BEFORE query limit check (no DoS amplification)
+        // Request with 25 utm_* parameters and 1 valid parameter should NOT bypass cache
+        $marketingParams = ['page' => '1'];
+        for ($i = 0; $i < 25; $i++) {
+            $marketingParams["utm_tag_{$i}"] = "ad_val_{$i}";
+        }
+        $this->app->instance('request', Request::create('/test?' . http_build_query($marketingParams)));
+
+        $service->callCount = 0;
+        $res5 = $service->fetchWithQuery();
+        $this->assertEquals('computed_1', $res5);
+
+        // Subsequent call with different utm tags still hits cache!
+        $marketingParams2 = ['page' => '1'];
+        for ($i = 0; $i < 25; $i++) {
+            $marketingParams2["utm_campaign_{$i}"] = "ad_val_diff_{$i}";
+        }
+        $this->app->instance('request', Request::create('/test?' . http_build_query($marketingParams2)));
+        $res6 = $service->fetchWithQuery();
+        $this->assertEquals('computed_1', $res6, 'Marketing tags must be stripped before limit check and hit the same cache entry.');
+        $this->assertEquals(1, $service->callCount);
     }
 
     /**
@@ -370,5 +393,46 @@ class SecurityAndEdgeCasesTest extends TestCase
 
         AtomicCache::put('expired_carbon_key', 'new_val_2', now()->subMinute());
         $this->assertFalse(AtomicCache::has('expired_carbon_key'));
+    }
+
+    /**
+     * Test 12: Virtual tag invalidation and withLock on non-taggable File store.
+     */
+    public function test_virtual_tag_invalidation_and_lock_on_file_store(): void
+    {
+        $tag = 'file_tag_test_' . uniqid();
+        $key = 'file_key_' . uniqid();
+        $count = 0;
+
+        // 1. Initial compute on file store with virtual tag
+        $val1 = AtomicCache::store('file')->tags([$tag])->remember($key, function () use (&$count) {
+            $count++;
+            return "file_val_{$count}";
+        }, 3600);
+        $this->assertEquals('file_val_1', $val1);
+
+        // 2. Cache hit returns same value
+        $val2 = AtomicCache::store('file')->tags([$tag])->remember($key, function () use (&$count) {
+            $count++;
+            return "file_val_{$count}";
+        }, 3600);
+        $this->assertEquals('file_val_1', $val2);
+        $this->assertEquals(1, $count);
+
+        // 3. Clear virtual tag
+        AtomicCache::store('file')->clearTags([$tag]);
+
+        // 4. After invalidation, subsequent remember computes fresh value
+        $val3 = AtomicCache::store('file')->tags([$tag])->remember($key, function () use (&$count) {
+            $count++;
+            return "file_val_{$count}";
+        }, 3600);
+        $this->assertEquals('file_val_2', $val3);
+        $this->assertEquals(2, $count);
+
+        // 5. withLock on file store with virtual tag
+        $lockKey = 'file_lock_key_' . uniqid();
+        $lockVal = AtomicCache::store('file')->tags([$tag])->withLock(5, 3)->remember($lockKey, fn() => 'locked_result', 3600);
+        $this->assertEquals('locked_result', $lockVal);
     }
 }
