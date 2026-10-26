@@ -62,7 +62,7 @@ class AtomicCache
     public function ttl(int|DateTimeInterface|DateInterval $seconds): self
     {
         $clone = clone $this;
-        $clone->customTtl = $this->parseTtlSeconds($seconds);
+        $clone->customTtl = static::parseTtlSeconds($seconds);
         return $clone;
     }
 
@@ -102,7 +102,7 @@ class AtomicCache
     /**
      * Parse any TTL input (int, Carbon, DateInterval) into clean integer seconds.
      */
-    public function parseTtlSeconds(mixed $ttl): ?int
+    public static function parseTtlSeconds(mixed $ttl): ?int
     {
         if ($ttl instanceof DateTimeInterface) {
             return max(0, $ttl->getTimestamp() - time());
@@ -138,10 +138,10 @@ class AtomicCache
 
         if ($arg2 instanceof Closure) {
             $resolvedCallback = $arg2;
-            $resolvedTtl = $this->parseTtlSeconds($arg3) ?? $this->parseTtlSeconds($ttl);
+            $resolvedTtl = static::parseTtlSeconds($arg3) ?? static::parseTtlSeconds($ttl);
         } elseif ($arg3 instanceof Closure) {
             $resolvedCallback = $arg3;
-            $resolvedTtl = $this->parseTtlSeconds($arg2) ?? $this->parseTtlSeconds($ttl);
+            $resolvedTtl = static::parseTtlSeconds($arg2) ?? static::parseTtlSeconds($ttl);
         } else {
             throw new \InvalidArgumentException("[AtomicCache] remember requires a Closure callback.");
         }
@@ -263,49 +263,61 @@ class AtomicCache
             return false;
         }
 
-        $parsedTtl = $this->parseTtlSeconds($ttl);
-        $ttlSeconds = $this->calculateTtl($parsedTtl);
-        $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
-        $store = $this->getRawStore();
-        $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
-        $repository = $this->getRepository($tags);
+        try {
+            $parsedTtl = static::parseTtlSeconds($ttl);
+            $ttlSeconds = $this->calculateTtl($parsedTtl);
+            $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
+            $store = $this->getRawStore();
+            $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
+            $repository = $this->getRepository($tags);
 
-        // 1. Write Deduplication (Cache DNA)
-        $dnaKey = "{$effectiveKey}:__dna__";
-        $dna = null;
-        if (config('atomic-cache.deduplication.enabled', false)) {
-            try {
-                $dna = md5(serialize($value));
-                $existingDna = $repository->get($dnaKey);
-                if ($existingDna !== null && $existingDna === $dna && $repository->has($effectiveKey)) {
-                    // Content is identical and already exists in cache: refresh TTL without re-serializing
-                    $repository->put($dnaKey, $dna, $ttlSeconds);
-                    $this->refreshKeyTtl($effectiveKey, $ttlSeconds, $repository);
-                    return true;
+            // 1. Write Deduplication (Cache DNA)
+            $dnaKey = "{$effectiveKey}:__dna__";
+            $dna = null;
+            if (config('atomic-cache.deduplication.enabled', false)) {
+                try {
+                    $dna = md5(serialize($value));
+                    $existingDna = $repository->get($dnaKey);
+                    if ($existingDna !== null && $existingDna === $dna && $repository->has($effectiveKey)) {
+                        // Content is identical and already exists in cache: refresh TTL without re-serializing
+                        $repository->put($dnaKey, $dna, $ttlSeconds);
+                        $this->refreshKeyTtl($effectiveKey, $ttlSeconds, $repository);
+                        return true;
+                    }
+                } catch (Throwable) {
+                    // Ignore DNA check failure
                 }
-            } catch (Throwable) {
-                // Ignore DNA serialization failure
             }
-        }
 
-        // 2. Transparent Chunking (for large arrays or collections)
-        if ($this->shouldChunk($value)) {
-            $success = $this->putChunked($effectiveKey, $value, $ttlSeconds, $tags, $repository);
-            if ($success && $dna !== null) {
-                $repository->put($dnaKey, $dna, $ttlSeconds);
+            // 2. Transparent Chunking (for large arrays or collections)
+            if ($this->shouldChunk($value)) {
+                $success = $this->putChunked($effectiveKey, $value, $ttlSeconds, $tags, $repository);
+                if ($success && $dna !== null) {
+                    try {
+                        $repository->put($dnaKey, $dna, $ttlSeconds);
+                    } catch (Throwable) {}
+                }
+                return $success;
             }
-            return $success;
+
+            // If not chunked, purge any previous chunked payload for this key
+            $this->cleanExistingChunks($effectiveKey, $repository);
+
+            // 3. Normal / Compressed Storage
+            $packed = $this->packPayload($value);
+            $stored = $repository->put($effectiveKey, $packed, $ttlSeconds);
+
+            if ($stored && $dna !== null) {
+                try {
+                    $repository->put($dnaKey, $dna, $ttlSeconds);
+                } catch (Throwable) {}
+            }
+
+            return (bool) $stored;
+        } catch (Throwable $e) {
+            Log::warning("[AtomicCache] Put failed for key '{$key}': " . $e->getMessage());
+            return false;
         }
-
-        // 3. Normal / Compressed Storage
-        $packed = $this->packPayload($value);
-        $stored = $repository->put($effectiveKey, $packed, $ttlSeconds);
-
-        if ($stored && $dna !== null) {
-            $repository->put($dnaKey, $dna, $ttlSeconds);
-        }
-
-        return $stored;
     }
 
     /**
@@ -317,12 +329,17 @@ class AtomicCache
             return false;
         }
 
-        $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
-        $store = $this->getRawStore();
-        $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
-        $repository = $this->getRepository($tags);
+        try {
+            $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
+            $store = $this->getRawStore();
+            $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
+            $repository = $this->getRepository($tags);
 
-        return $repository->has($effectiveKey);
+            return (bool) $repository->has($effectiveKey);
+        } catch (Throwable $e) {
+            Log::warning("[AtomicCache] Has check failed for key '{$key}': " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -348,18 +365,25 @@ class AtomicCache
      */
     public function forget(string $key, array $tags = []): bool
     {
-        $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
-        $store = $this->getRawStore();
-        $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
-        $repository = $this->getRepository($tags);
+        try {
+            $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
+            $store = $this->getRawStore();
+            $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
+            $repository = $this->getRepository($tags);
 
-        $this->cleanExistingChunks($effectiveKey, $repository);
+            $this->cleanExistingChunks($effectiveKey, $repository);
 
-        if (config('atomic-cache.deduplication.enabled', false)) {
-            $repository->forget("{$effectiveKey}:__dna__");
+            if (config('atomic-cache.deduplication.enabled', false)) {
+                try {
+                    $repository->forget("{$effectiveKey}:__dna__");
+                } catch (Throwable) {}
+            }
+
+            return (bool) $repository->forget($effectiveKey);
+        } catch (Throwable $e) {
+            Log::warning("[AtomicCache] Forget failed for key '{$key}': " . $e->getMessage());
+            return false;
         }
-
-        return $repository->forget($effectiveKey);
     }
 
     /**
@@ -371,14 +395,20 @@ class AtomicCache
     }
 
     /**
-     * Flush all atomic cache items by deleting the configured prefix or entire store.
+     * Flush cached items.
+     * When tags are active, flushes only those specific tags.
+     * When called on raw store, flushes the entire cache store.
      */
     public function flush(): bool
     {
+        if (!empty($this->activeTags)) {
+            return $this->clearTags($this->activeTags);
+        }
+
         try {
             return $this->getRawStore()->flush();
         } catch (Throwable $e) {
-            Log::error('[AtomicCache] Flush failed: ' . $e->getMessage());
+            Log::warning('[AtomicCache] Flush failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -542,19 +572,22 @@ class AtomicCache
     protected function calculateTtl(?int $ttl): int
     {
         $baseTtl = $ttl ?? $this->customTtl ?? (int) config('atomic-cache.default_ttl', 3600);
+        $baseTtl = max(1, $baseTtl);
 
-        $jitterEnabled = config('atomic-cache.jitter.enabled', true);
+        $jitterEnabled = config('atomic-cache.jitter.enabled', false);
         if (!$jitterEnabled && $this->customJitter === null) {
             return $baseTtl;
         }
 
         $percentage = $this->customJitter ?? ((float) config('atomic-cache.jitter.percentage', 5) / 100);
+        // Clamp jitter to max 50% to prevent non-positive TTL
+        $percentage = max(0.0, min(0.5, $percentage));
         $delta = (int) round($baseTtl * $percentage);
 
         if ($delta <= 0) {
             return $baseTtl;
         }
 
-        return $baseTtl + random_int(-$delta, $delta);
+        return max(1, $baseTtl + random_int(-$delta, $delta));
     }
 }

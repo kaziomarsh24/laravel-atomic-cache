@@ -3,6 +3,7 @@
 namespace KaziOmar\AtomicCache\Concerns;
 
 use Closure;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -89,9 +90,18 @@ trait ManagesLocks
 
     /**
      * Check if a cache store supports atomic distributed locks.
+     * Inspects underlying store for LockProvider contract since Repository proxies locks via __call.
      */
-    public function supportsLock(Repository $store): bool
+    public function supportsLock(mixed $store): bool
     {
-        return method_exists($store, 'lock');
+        if (!is_object($store)) {
+            return false;
+        }
+        if (method_exists($store, 'getStore')) {
+            $raw = $store->getStore();
+            return $raw instanceof LockProvider || method_exists($raw, 'lock');
+        }
+
+        return $store instanceof LockProvider || method_exists($store, 'lock');
     }
 }

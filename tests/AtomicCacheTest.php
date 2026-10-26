@@ -402,13 +402,16 @@ class AtomicCacheTest extends TestCase
         $manifest = $store->get('atomic:big_dataset');
         $this->assertIsArray($manifest);
         $this->assertTrue($manifest['__ac_chunked'] ?? false);
+        $this->assertNotEmpty($manifest['generation']);
         $this->assertEquals(3, $manifest['chunks_count']);
         $this->assertEquals(2500, $manifest['total_items']);
 
+        $gen = $manifest['generation'];
+
         // Verify chunk keys exist in underlying store
-        $this->assertTrue($store->has('atomic:big_dataset:__chunk__:0'));
-        $this->assertTrue($store->has('atomic:big_dataset:__chunk__:1'));
-        $this->assertTrue($store->has('atomic:big_dataset:__chunk__:2'));
+        $this->assertTrue($store->has("atomic:big_dataset:__chunk__:{$gen}:0"));
+        $this->assertTrue($store->has("atomic:big_dataset:__chunk__:{$gen}:1"));
+        $this->assertTrue($store->has("atomic:big_dataset:__chunk__:{$gen}:2"));
 
         // Retrieve and verify data integrity and key preservation
         $restored = AtomicCache::get('big_dataset');
@@ -420,9 +423,9 @@ class AtomicCacheTest extends TestCase
         // Verify forget removes both manifest and all chunk keys
         AtomicCache::forget('big_dataset');
         $this->assertFalse($store->has('atomic:big_dataset'));
-        $this->assertFalse($store->has('atomic:big_dataset:__chunk__:0'));
-        $this->assertFalse($store->has('atomic:big_dataset:__chunk__:1'));
-        $this->assertFalse($store->has('atomic:big_dataset:__chunk__:2'));
+        $this->assertFalse($store->has("atomic:big_dataset:__chunk__:{$gen}:0"));
+        $this->assertFalse($store->has("atomic:big_dataset:__chunk__:{$gen}:1"));
+        $this->assertFalse($store->has("atomic:big_dataset:__chunk__:{$gen}:2"));
     }
 
     public function test_transparent_chunking_with_collection(): void
@@ -450,7 +453,12 @@ class AtomicCacheTest extends TestCase
 
         // Simulate chunk loss (e.g. eviction or driver memory drop)
         $store = AtomicCache::getRawStore();
-        $store->forget('atomic:broken_chunked_data:__chunk__:1');
+        $manifest = $store->get('atomic:broken_chunked_data');
+        $gen = $manifest['generation'] ?? null;
+        $chunk1Key = $gen !== null
+            ? "atomic:broken_chunked_data:__chunk__:{$gen}:1"
+            : 'atomic:broken_chunked_data:__chunk__:1';
+        $store->forget($chunk1Key);
 
         // remember should detect corrupted/missing chunk, self-heal, and run closure
         $recovered = AtomicCache::remember('broken_chunked_data', 60, function () {
@@ -1141,5 +1149,149 @@ class AtomicCacheTest extends TestCase
 
         $this->assertNotEmpty($result1);
         $this->assertNotEmpty($result2);
+    }
+
+    public function test_tags_flush_only_flushes_tagged_keys_and_preserves_untagged_keys(): void
+    {
+        // 1. Put keys in different tag scopes and untagged
+        AtomicCache::tags(['orders'])->put('order_1', 'order_data_1', 60);
+        AtomicCache::tags(['users'])->put('user_1', 'user_data_1', 60);
+        AtomicCache::put('session_token', 'user_session_secret', 60);
+
+        $this->assertEquals('order_data_1', AtomicCache::tags(['orders'])->get('order_1'));
+        $this->assertEquals('user_data_1', AtomicCache::tags(['users'])->get('user_1'));
+        $this->assertEquals('user_session_secret', AtomicCache::get('session_token'));
+
+        // 2. Flush ONLY orders tag
+        $flushed = AtomicCache::tags(['orders'])->flush();
+        $this->assertTrue($flushed);
+
+        // 3. Assert orders are invalidated, but users and session remain intact
+        $this->assertNull(AtomicCache::tags(['orders'])->get('order_1'));
+        $this->assertEquals('user_data_1', AtomicCache::tags(['users'])->get('user_1'));
+        $this->assertEquals('user_session_secret', AtomicCache::get('session_token'));
+    }
+
+    public function test_supports_lock_detects_lock_provider_and_executes_lock(): void
+    {
+        $rawStore = AtomicCache::getRawStore();
+        $this->assertTrue(AtomicCache::supportsLock($rawStore));
+
+        // Test with mock store that does not implement LockProvider
+        $unsupportedStore = new class {
+            public function getStore() {
+                return new class {};
+            }
+        };
+        $this->assertFalse(AtomicCache::supportsLock($unsupportedStore));
+
+        // Test rememberWithLock acquires lock on supported store and computes value
+        $executed = false;
+        $result = AtomicCache::rememberWithLock('test_lock_key', 60, function () use (&$executed) {
+            $executed = true;
+            return 'locked_value';
+        });
+
+        $this->assertTrue($executed);
+        $this->assertEquals('locked_value', $result);
+    }
+
+    public function test_chunking_generation_uuids_prevent_torn_reads_and_purges_old_generation(): void
+    {
+        $store = AtomicCache::getRawStore();
+
+        // 1. Initial write
+        $items1 = [];
+        for ($i = 1; $i <= 2500; $i++) {
+            $items1["k_{$i}"] = "Val1_{$i}";
+        }
+        AtomicCache::put('gen_dataset', $items1, 60);
+
+        $manifest1 = $store->get('atomic:gen_dataset');
+        $this->assertNotEmpty($manifest1['generation']);
+        $gen1 = $manifest1['generation'];
+        $this->assertTrue($store->has("atomic:gen_dataset:__chunk__:{$gen1}:0"));
+
+        // 2. Overwrite with second dataset
+        $items2 = [];
+        for ($i = 1; $i <= 2500; $i++) {
+            $items2["k_{$i}"] = "Val2_{$i}";
+        }
+        AtomicCache::put('gen_dataset', $items2, 60);
+
+        $manifest2 = $store->get('atomic:gen_dataset');
+        $gen2 = $manifest2['generation'];
+        $this->assertNotEquals($gen1, $gen2);
+
+        // 3. Generation 2 chunks must exist, generation 1 chunks must be cleanly purged
+        $this->assertTrue($store->has("atomic:gen_dataset:__chunk__:{$gen2}:0"));
+        $this->assertFalse($store->has("atomic:gen_dataset:__chunk__:{$gen1}:0"));
+
+        // 4. Content must match generation 2
+        $restored = AtomicCache::get('gen_dataset');
+        $this->assertEquals('Val2_1', $restored['k_1']);
+        $this->assertEquals('Val2_2500', $restored['k_2500']);
+
+        AtomicCache::forget('gen_dataset');
+    }
+
+    public function test_dynamic_chunking_splits_by_byte_size_for_large_rows(): void
+    {
+        config(['atomic-cache.chunking.threshold' => 1000]);
+        config(['atomic-cache.chunking.max_bytes' => 100000]); // 100KB max per chunk
+
+        // 40 items each having ~10KB payload (total ~400KB > 100KB, but count 40 < threshold 1000)
+        $largeItems = [];
+        for ($i = 1; $i <= 40; $i++) {
+            $largeItems["item_{$i}"] = str_repeat('X', 10000);
+        }
+
+        AtomicCache::put('byte_chunked_test', $largeItems, 60);
+
+        $store = AtomicCache::getRawStore();
+        $manifest = $store->get('atomic:byte_chunked_test');
+        $this->assertIsArray($manifest);
+        $this->assertTrue($manifest['__ac_chunked'] ?? false);
+        $this->assertGreaterThan(1, $manifest['chunks_count']);
+
+        $restored = AtomicCache::get('byte_chunked_test');
+        $this->assertCount(40, $restored);
+        $this->assertEquals(str_repeat('X', 10000), $restored['item_1']);
+
+        AtomicCache::forget('byte_chunked_test');
+    }
+
+    public function test_put_has_forget_handle_storage_exceptions_gracefully(): void
+    {
+        // Mock a store where getRepository throws an exception
+        $mock = new class extends \KaziOmar\AtomicCache\AtomicCache {
+            public function getRepository(array $tags = []): \Illuminate\Contracts\Cache\Repository {
+                throw new \RuntimeException('Redis connection timeout');
+            }
+        };
+
+        $this->assertFalse($mock->put('fail_key', 'val', 60));
+        $this->assertFalse($mock->has('fail_key'));
+        $this->assertFalse($mock->forget('fail_key'));
+    }
+
+    public function test_service_provider_registers_terminating_reset_and_alias(): void
+    {
+        // 1. Alias registration
+        $this->assertInstanceOf(
+            \KaziOmar\AtomicCache\AtomicCache::class,
+            app('atomic-cache')
+        );
+
+        // 2. Terminating reset hook
+        $initialLevel = ob_get_level();
+        \KaziOmar\AtomicCache\Blade\AtomicCacheBladeHelper::setUp('blade_term_test', 60);
+        $this->assertGreaterThan($initialLevel, ob_get_level());
+
+        // Trigger Laravel application terminating callbacks
+        $this->app->terminate();
+
+        // Stack should be completely unwound down to initial level
+        $this->assertEquals($initialLevel, ob_get_level());
     }
 }

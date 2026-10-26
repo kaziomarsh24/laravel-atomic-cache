@@ -24,6 +24,8 @@ class AtomicCacheServiceProvider extends ServiceProvider
         $this->app->singleton('atomic-cache', function ($app) {
             return new AtomicCache();
         });
+
+        $this->app->alias('atomic-cache', AtomicCache::class);
     }
 
     /**
@@ -45,6 +47,12 @@ class AtomicCacheServiceProvider extends ServiceProvider
 
         $this->registerBladeDirectives();
         $this->registerQueryMacros();
+
+        if (method_exists($this->app, 'terminating')) {
+            $this->app->terminating(function () {
+                AtomicCacheBladeHelper::reset();
+            });
+        }
     }
 
     /**
@@ -83,9 +91,15 @@ class AtomicCacheServiceProvider extends ServiceProvider
                     try {
                         $ref = new \ReflectionFunction($constraint);
                         $staticVars = $ref->getStaticVariables();
-                        $part .= ':' . md5($ref->getFileName() . ':' . $ref->getStartLine() . ':' . $ref->getEndLine() . ':' . serialize($staticVars));
+                        $varsSerialized = '';
+                        try {
+                            $varsSerialized = serialize($staticVars);
+                        } catch (\Throwable) {
+                            $varsSerialized = json_encode(array_keys($staticVars));
+                        }
+                        $part .= ':' . md5($ref->getFileName() . ':' . $ref->getStartLine() . ':' . $ref->getEndLine() . ':' . $varsSerialized);
                     } catch (\Throwable) {
-                        $part .= ':constrained';
+                        $part .= ':constrained:' . spl_object_hash($constraint);
                     }
                 }
                 $parts[] = $part;
