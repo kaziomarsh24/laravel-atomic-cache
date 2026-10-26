@@ -366,6 +366,12 @@ class AtomicCacheTest extends TestCase
         $service->clearItemCache(20);
         $this->assertNull(AtomicCache::tags(['orders:20'])->get('orders:20'));
 
+        // 3.1 Verify flushAll clears both item and collection caches
+        $service->cacheItem(30, fn() => 'Order #30');
+        $this->assertEquals('Order #30', $service->cacheItem(30, fn() => 'Stale'));
+        $service->flushAll();
+        $this->assertEquals('Fresh #30', $service->cacheItem(30, fn() => 'Fresh #30'));
+
         // 4. Flexible remember in service (both orders)
         $r1 = $service->remember('test_srv_r1', 60, fn() => 'r1_val');
         $this->assertEquals('r1_val', $r1);

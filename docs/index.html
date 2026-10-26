@@ -285,10 +285,10 @@
                         Laravel 10 / 11 / 12 / 13.x
                     </span>
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                        PHP 8.2 through 8.6
+                        PHP 8.2+ (tested on 8.2, 8.3, 8.4 &amp; 8.5)
                     </span>
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                        Works on Redis, File, Database & SQLite
+                        Works on Redis, File, Database &amp; SQLite
                     </span>
                 </div>
 
@@ -510,13 +510,13 @@
                     </table>
                 </div>
 
-                <!-- Marketing Tag Sanitization -->
-                <div class="my-4 p-4 rounded-lg bg-emerald-50/50 dark:bg-zinc-900 border border-emerald-200/60 dark:border-zinc-800">
-                    <h4 class="text-sm font-bold text-emerald-900 dark:text-emerald-400 mb-1">
-                        Marketing Tag Sanitization (Cache Fragmentation Shield)
+                <!-- Automatic Query & Join Invalidation -->
+                <div class="my-4 p-4 rounded-lg bg-blue-50/50 dark:bg-zinc-900 border border-blue-200/60 dark:border-zinc-800">
+                    <h4 class="text-sm font-bold text-blue-900 dark:text-blue-400 mb-1">
+                        Automatic Query &amp; Join Invalidation
                     </h4>
                     <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
-                        When users visit with ad campaign tags like <code>?page=2&amp;fbclid=xyz&amp;utm_source=fb</code>, AtomicCache automatically strips tracking parameters before calculating the cache fingerprint. Pagination parameters (<code>?page=2</code>, <code>?sort=price</code>) remain isolated, but 10,000 ad clicks share the exact same cache entry instead of duplicating memory.
+                        The query macro generates deterministic fingerprints incorporating SQL, bindings, and active eager loads (<code>with()</code>). If your query joins multiple tables (e.g. <code>users</code> join <code>orders</code>), AtomicCache automatically tags both tables so updates to either model safely invalidate the cached query.
                     </p>
                 </div>
             </section>
@@ -541,7 +541,7 @@
                         <span>app/Http/Controllers/FlashSaleController.php</span>
                         <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
                     </div>
-                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. READ SHIELD: 5,000 shoppers refreshing produce exactly 1 query to MySQL</span>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. READ SHIELD: Collapses concurrent traffic to 1 query while caching</span>
 <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">showDeal</span>(<span class="token-keyword">int</span> <span class="token-variable">$productId</span>)
 {
     <span class="token-keyword">return</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">rememberWithLock</span>(<span class="token-string">"flash_deal:{$productId}"</span>, <span class="token-number">300</span>, <span class="token-keyword">function</span> () <span class="token-keyword">use</span> (<span class="token-variable">$productId</span>) {
@@ -559,13 +559,16 @@
             <span class="token-keyword">return</span> <span class="token-function">response</span>()<span class="token-operator">-&gt;</span><span class="token-function">json</span>([<span class="token-string">'error'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'Sold out!'</span>], <span class="token-number">422</span>);
         }
 
-        <span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-function">decrement</span>(<span class="token-string">'stock'</span>, <span class="token-number">1</span>);
+        <span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-property">stock</span> <span class="token-operator">-=</span> <span class="token-number">1</span>;
+        <span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-function">save</span>(); <span class="token-comment">// AutoClearsCache purges the 'products' cache immediately after DB commit</span>
         <span class="token-variable">$order</span> <span class="token-operator">=</span> <span class="token-class">Order</span><span class="token-operator">::</span><span class="token-function">create</span>([<span class="token-string">'product_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$productId</span>, <span class="token-string">'user_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$userId</span>]);
 
-        <span class="token-comment">// AutoClearsCache purges the cache immediately after DB commit completes</span>
         <span class="token-keyword">return</span> <span class="token-function">response</span>()<span class="token-operator">-&gt;</span><span class="token-function">json</span>([<span class="token-string">'success'</span> <span class="token-operator">=&gt;</span> <span class="token-keyword">true</span>, <span class="token-string">'order_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$order</span><span class="token-operator">-&gt;</span><span class="token-property">id</span>]);
     });
 }</code></pre>
+                    <div class="px-4 py-2.5 bg-slate-100 dark:bg-zinc-800/80 border-t border-slate-200 dark:border-zinc-800 text-[11px] text-slate-600 dark:text-zinc-400">
+                        <strong>Note:</strong> Eloquent lifecycle events fire on <code>$model-&gt;save()</code>, <code>create()</code>, and <code>delete()</code>. If using direct query methods like <code>$product-&gt;decrement('stock', 1)</code> or mass updates, manually call <code>AtomicCache::clearTags(['products'])</code>.
+                    </div>
                 </div>
             </section>
 
@@ -581,7 +584,7 @@
                 <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 mb-4 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
                     <strong>The Problem:</strong> When caching user carts, order histories, or notification counters, using a global key creates critical security risks where Customer A sees Customer B's cart.
                     <br><br>
-                    <strong>The Solution:</strong> Use <code>AtomicCache::rememberForUser()</code> or the fluent <code>AtomicCache::forUser()</code> builder. It automatically namespaces the key with the authenticated user ID and forgets cleanly on logout or checkout.
+                    <strong>The Solution:</strong> Use <code>AtomicCache::rememberForUser()</code> or the fluent <code>AtomicCache::forUser()</code> builder. It automatically namespaces the key with the authenticated user ID (supporting integer IDs, UUIDs, and ULIDs) and can be forgotten cleanly on logout or checkout.
                 </div>
 
                 <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
@@ -589,7 +592,7 @@
                         <span>app/Http/Controllers/CartController.php</span>
                         <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
                     </div>
-                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. Remember cart for active user (key: "user:{auth_id}:active_cart")</span>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. Remember cart for active user (key: "atomic:user:{auth_id}:active_cart")</span>
 <span class="token-variable">$cart</span> <span class="token-operator">=</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">rememberForUser</span>(<span class="token-string">'active_cart'</span>, <span class="token-number">600</span>, <span class="token-keyword">function</span> () {
     <span class="token-keyword">return</span> <span class="token-class">Cart</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'user_id'</span>, <span class="token-function">auth</span>()<span class="token-operator">-&gt;</span><span class="token-function">id</span>())<span class="token-operator">-&gt;</span><span class="token-function">with</span>(<span class="token-string">'items'</span>)<span class="token-operator">-&gt;</span><span class="token-function">first</span>();
 });
@@ -597,7 +600,7 @@
 <span class="token-comment">// 2. Invalidate private user cart after checkout</span>
 <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">completeCheckout</span>()
 {
-    <span class="token-comment">// Forgets the scoped key "user:{auth_id}:active_cart" for the current customer</span>
+    <span class="token-comment">// Forgets the scoped key "atomic:user:{auth_id}:active_cart" for the current customer</span>
     <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">forUser</span>()<span class="token-operator">-&gt;</span><span class="token-function">forget</span>(<span class="token-string">'active_cart'</span>);
 }</code></pre>
                 </div>
@@ -705,6 +708,16 @@
     }
 }</code></pre>
                 </div>
+
+                <!-- Marketing Tag Sanitization -->
+                <div class="my-4 p-4 rounded-lg bg-emerald-50/50 dark:bg-zinc-900 border border-emerald-200/60 dark:border-zinc-800">
+                    <h4 class="text-sm font-bold text-emerald-900 dark:text-emerald-400 mb-1">
+                        Marketing Tag Sanitization (Cache Fragmentation Shield)
+                    </h4>
+                    <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
+                        When users visit with ad campaign tags like <code>?page=2&amp;fbclid=xyz&amp;utm_source=fb</code>, methods like <code>cache()</code> and <code>rememberCollection()</code> automatically strip tracking parameters before calculating the cache fingerprint. Legitimate filter parameters (<code>?page=2</code>, <code>?sort=price</code>) remain isolated and sorted with <code>ksort()</code>, but 10,000 ad clicks share the exact same cache entry instead of duplicating memory.
+                    </p>
+                </div>
             </section>
 
             <!-- Section 12: Scenario 6 - Blade Fragment Caching -->
@@ -771,7 +784,7 @@
                             3. Write Deduplication (Cache DNA)
                         </h3>
                         <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
-                            Payloads are hashed before writing. If identical data is already stored, AtomicCache skips re-serialization and simply refreshes the expiration TTL in the store.
+                            Payloads are hashed before writing. If identical data is already stored, AtomicCache skips redundant store writes and payload compression, refreshing the expiration TTL on the existing item and chunks.
                         </p>
                     </div>
 
@@ -858,15 +871,18 @@ php artisan atomic-cache:check --json # For CI/CD audit pipelines</code></pre>
                             <pre class="p-3 text-[12px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>php artisan atomic-cache:bench --driver=redis --iterations=10</code></pre>
                         </div>
                         <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs text-xs font-mono">
-                            <pre class="p-3 text-[11px] text-zinc-300 leading-relaxed overflow-x-auto bg-[#0d1117]"><code>+-------------------+------------------------------+---------------------------+---------------------+-------------------------+
-| Metric Category   | Scenario                     | Raw / Simulated Baseline  | AtomicCache Result  | Improvement / Status    |
-+-------------------+------------------------------+---------------------------+---------------------+-------------------------+
-| Latency / Speed   | Database Query vs Cache Hit  | 45.00 ms                  | 0.28 ms             | +99.4% Faster           |
-| Payload Size      | Large Array Gzip Compression | 95.48 KB                  | 4.13 KB             | 95.7% Memory Saved      |
-| Safe Chunking     | Large Dataset (2,500 items)  | Single raw item (>1MB)    | 3 safe chunks       | Passed (Keys Preserved) |
-| Tag Resilience    | Non-Redis Virtual Tagging    | Native Tag Support        | Zero-Crash Emulate  | Resilient (Zero Crash)  |
-+-------------------+------------------------------+---------------------------+---------------------+-------------------------+</code></pre>
+                            <pre class="p-3 text-[11px] text-zinc-300 leading-relaxed overflow-x-auto bg-[#0d1117]"><code>+--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
+| Metric Category    | Scenario                     | Raw / Simulated Baseline          | AtomicCache Result   | Improvement / Status    |
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
+| ⚡ Latency / Speed | Database Query vs Cache Hit  | 45.00 ms (Simulated DB)           | 0.04 ms              | +99.9% Faster           |
+| 📦 Payload Size    | Large Array Gzip Compression | 95.48 KB (Raw Array)              | 4.13 KB (Gzip)       | 95.7% Memory Saved      |
+| 🧩 Safe Chunking   | Large Dataset (2,500 items)  | Single raw item (Risk: 1MB limit) | 3 safe chunks        | Passed (Keys Preserved) |
+| 🏷️ Tag Resilience  | Non-Redis Virtual Tagging    | Native Tag Support                | Zero-Crash Emulation | Resilient (Zero Crash)  |
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+</code></pre>
                         </div>
+                        <p class="text-[11px] text-slate-500 dark:text-zinc-500 mt-1.5 italic">
+                            * Latency speedup is computed against a 45.00 ms simulated MySQL query. Memory savings reflect Gzip compression on structured array payloads (real-world ratio depends on data compressibility).
+                        </p>
                     </div>
 
                     <div>
@@ -874,9 +890,12 @@ php artisan atomic-cache:check --json # For CI/CD audit pipelines</code></pre>
                             3. Targeted Tag Purging: php artisan atomic-cache:clear
                         </h3>
                         <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
-                            <pre class="p-3 text-[12px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>php artisan atomic-cache:clear products # Purges 'products' tag and key
-php artisan atomic-cache:clear --all    # Clears all entries in active store</code></pre>
+                            <pre class="p-3 text-[12px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>php artisan atomic-cache:clear products        # Purges 'products' tag and key
+php artisan atomic-cache:clear --all --force   # Force flush entire store without interactive prompt</code></pre>
                         </div>
+                        <p class="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                            <strong>Caution:</strong> Running <code>atomic-cache:clear --all</code> flushes the entire cache store. On shared Redis instances, use with <code>--force</code> only if you intend to clear all cache keys.
+                        </p>
                     </div>
                 </div>
             </section>
@@ -1118,6 +1137,16 @@ php artisan atomic-cache:clear --all    # Clears all entries in active store</co
                                 <td class="p-3">Enables distributed mutex locking during cache recomputations.</td>
                             </tr>
                             <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_LOCK_SECONDS</td>
+                                <td class="p-3 font-mono">10</td>
+                                <td class="p-3">Maximum duration in seconds a distributed lock is held before automatic release.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_WAIT_SECONDS</td>
+                                <td class="p-3 font-mono">5</td>
+                                <td class="p-3">Maximum seconds concurrent requests wait to acquire lock before computing fallback.</td>
+                            </tr>
+                            <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_COMPRESSION_ENABLED</td>
                                 <td class="p-3 font-mono">true</td>
                                 <td class="p-3">Enables automatic Gzip payload compression.</td>
@@ -1126,6 +1155,11 @@ php artisan atomic-cache:clear --all    # Clears all entries in active store</co
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_COMPRESSION_THRESHOLD</td>
                                 <td class="p-3 font-mono">51200</td>
                                 <td class="p-3">Minimum payload size in bytes to trigger Gzip compression (50 KB).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_COMPRESSION_LEVEL</td>
+                                <td class="p-3 font-mono">6</td>
+                                <td class="p-3">Gzip compression level from 1 (fastest) to 9 (maximum compression).</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNKING_ENABLED</td>
@@ -1138,14 +1172,34 @@ php artisan atomic-cache:clear --all    # Clears all entries in active store</co
                                 <td class="p-3">Item count required to partition collections into chunks.</td>
                             </tr>
                             <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNK_SIZE</td>
+                                <td class="p-3 font-mono">1000</td>
+                                <td class="p-3">Maximum items per partition chunk.</td>
+                            </tr>
+                            <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_DEDUPLICATION_ENABLED</td>
                                 <td class="p-3 font-mono">true</td>
-                                <td class="p-3">Skips re-serializing identical payloads while refreshing store TTL.</td>
+                                <td class="p-3">Skips redundant store writes and compression when payload is unchanged.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_JITTER_ENABLED</td>
                                 <td class="p-3 font-mono">false</td>
-                                <td class="p-3">Enables random variance on expiry time (±5%) to prevent herd spikes.</td>
+                                <td class="p-3">Enables random variance on expiry time to prevent simultaneous expiry (thundering herd).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_JITTER_PERCENTAGE</td>
+                                <td class="p-3 font-mono">5</td>
+                                <td class="p-3">Percentage variance applied to TTL when jitter is enabled (±5%).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_SELF_HEALING_ENABLED</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Automatically purges corrupted or orphaned chunk keys and self-heals cleanly.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_LOG_CORRUPTED</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Logs corrupted cache recovery events to standard Laravel application logs.</td>
                             </tr>
                         </tbody>
                     </table>

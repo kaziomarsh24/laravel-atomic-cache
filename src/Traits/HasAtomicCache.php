@@ -148,7 +148,7 @@ trait HasAtomicCache
     {
         $resource = $this->getCacheResource();
         $cacheKey = "{$resource}:{$id}";
-        $tags = ["{$resource}:{$id}"];
+        $tags = ["{$resource}:{$id}", $resource];
 
         return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
     }
