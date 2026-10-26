@@ -70,7 +70,7 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 | **Stampede Protection** | ❌ All concurrent requests hit DB | ✅ **Atomic Lock** (1 worker computes, others wait & read) |
 | **Large Payload Size** | ❌ Raw uncompressed serialization | ✅ **Auto Gzip** (>50KB cuts Redis RAM by 70–80%) |
 | **Mega Datasets** | ❌ Fails on 1MB Memcached / Redis freeze | ✅ **Transparent Chunking** (splits safely, preserves keys) |
-| **Redundant Writes** | ❌ Every put hits storage/network | ✅ **Write Deduplication** (opt-in DNA hashing; skips redundant re-writes) |
+| **Redundant Writes** | ❌ Every put hits storage/network | ✅ **Write Deduplication** (opt-in DNA hashing; skips re-compression and chunk re-splitting) |
 | **Driver Tag Support** | ❌ Crashes on File/Database stores | ✅ **Virtual Tagging** (works across all stores without Redis) |
 | **Corrupted Data** | ❌ Throws crash exception to user | ✅ **Self-Healing** (cleans key, regenerates silently) |
 | **Simultaneous Expiry** | ❌ All keys expire in same second | ✅ **TTL Jitter** (random variance prevents herd spikes) |

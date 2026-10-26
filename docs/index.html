@@ -1148,7 +1148,7 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNKING_THRESHOLD</td>
                                 <td class="p-3 font-mono">1000</td>
-                                <td class="p-3">Item count required to partition collections into chunks (triggers on 1,001+ items).</td>
+                                <td class="p-3">Item count required to partition collections into chunks (triggers on more than 1,000 items or when payload exceeds max_bytes).</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNK_SIZE</td>
@@ -1156,9 +1156,29 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                                 <td class="p-3">Maximum items per partition chunk.</td>
                             </tr>
                             <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNK_MAX_BYTES</td>
+                                <td class="p-3 font-mono">800000</td>
+                                <td class="p-3">Maximum payload size in bytes per chunk (800 KB) for strict Memcached 1MB limit safety.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT</td>
+                                <td class="p-3 font-mono">false</td>
+                                <td class="p-3">When true, eagerly purges prior generation chunks upon non-chunked key overwrite.</td>
+                            </tr>
+                            <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_DEDUPLICATION_ENABLED</td>
                                 <td class="p-3 font-mono">false</td>
-                                <td class="p-3">Opt-in DNA hashing: skips compression and chunk re-splitting if identical content is cached.</td>
+                                <td class="p-3">Opt-in DNA hashing: skips re-compression and chunk re-splitting if identical content is cached.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_QUERY_MAX_PARAMS</td>
+                                <td class="p-3 font-mono">20</td>
+                                <td class="p-3">Maximum query string parameters allowed before automatically bypassing cache (DoS protection).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_QUERY_MAX_BYTES</td>
+                                <td class="p-3 font-mono">2048</td>
+                                <td class="p-3">Maximum query string byte size allowed before bypassing cache (prevents hash collision attacks).</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_JITTER_ENABLED</td>

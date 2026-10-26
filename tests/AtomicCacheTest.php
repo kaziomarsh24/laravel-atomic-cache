@@ -255,6 +255,34 @@ class AtomicCacheTest extends TestCase
         $this->assertEquals(2, $count);
     }
 
+    public function test_auto_clears_cache_defers_to_after_commit_and_ignores_on_rollback(): void
+    {
+        $post = TestPost::create(['title' => 'Initial Title']);
+        $tag = 'test_posts:' . $post->id;
+
+        AtomicCache::tags([$tag])->put('post_data', 'cached_version', 60);
+        $this->assertEquals('cached_version', AtomicCache::tags([$tag])->get('post_data'));
+
+        // 1. Transaction Rollback: cache should NOT be cleared
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        $post->update(['title' => 'Rolled Back Title']);
+        // Inside transaction before commit: cache is untouched because invalidation is deferred to afterCommit
+        $this->assertEquals('cached_version', AtomicCache::tags([$tag])->get('post_data'));
+        \Illuminate\Support\Facades\DB::rollBack();
+
+        // After rollback: cache still untouched
+        $this->assertEquals('cached_version', AtomicCache::tags([$tag])->get('post_data'));
+
+        // 2. Transaction Commit: cache SHOULD be cleared
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        $post->update(['title' => 'Committed Title']);
+        $this->assertEquals('cached_version', AtomicCache::tags([$tag])->get('post_data'));
+        \Illuminate\Support\Facades\DB::commit();
+
+        // After commit: afterCommit fired and cleared cache!
+        $this->assertNull(AtomicCache::tags([$tag])->get('post_data'));
+    }
+
     public function test_ttl_jitter_calculates_within_expected_variance(): void
     {
         // Using withJitter(0.1) on 1000s should keep TTL between 900s and 1100s
