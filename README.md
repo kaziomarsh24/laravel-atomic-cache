@@ -32,6 +32,7 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 ## 📑 Table of Contents
 
 - [Why Laravel Atomic Cache?](#why-laravel-atomic-cache)
+- [When NOT to Cache](#-when-not-to-cache)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [⚡ Quickstart in 10 Seconds (Zero-Config Guide)](#-quickstart-in-10-seconds-zero-config-guide)
@@ -76,6 +77,16 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 | **Model Invalidation** | ⚠️ Fragile observers before commit | ✅ **DB::afterCommit** (prevents transaction race conditions) |
 | **Pagination Caching** | ⚠️ Page 1 and 2 collide unless manual | ✅ **Auto Query Hash** (page/filter automatically isolated) |
 | **Diagnostics & Audit** | ❌ DIY logging | ✅ **Artisan Benchmark CLI** (`atomic-cache:bench`) |
+
+---
+
+## 🛑 When NOT to Cache
+
+Caching is not suitable for every workload. To maintain system reliability, avoid caching in these scenarios:
+
+- **Real-Time WebSockets & Chat Messages:** Chat messages (`ChatMessage`) should be pushed directly via Laravel Reverb or Pusher. Caching them creates unnecessary memory churn without read benefits.
+- **High-Frequency GPS & Telemetry:** Live driver/rider coordinates streaming every few seconds belong in Redis Pub/Sub, Kafka, or ClickHouse, not application-level cache.
+- **Financial Transactions & Stock Deductions:** Real-time wallet balances, inventory decrements, and audit logs require pessimistic database row locks (`lockForUpdate()`) to guarantee absolute transactional consistency.
 
 ---
 
@@ -345,14 +356,14 @@ php artisan atomic-cache:bench --format=json
 ```text
 ⚡ Running AtomicCache Benchmark against driver [redis] (5 iterations)...
 
-+-------------------+---------------------+---------------------+-------------------------+
-| Benchmark         | Baseline            | AtomicCache         | Improvement / Status    |
-+-------------------+---------------------+---------------------+-------------------------+
-| Latency (Speed)   | 45.00 ms (DB)       | 0.28 ms             | +99.4% Faster           |
-| Payload Size      | 95.48 KB (Raw)      | 4.13 KB (Gzip)      | 95.7% Memory Saved      |
-| Mega Dataset      | 1 Item (>1MB limit) | 3 safe chunks       | Passed (Preserved)      |
-| Tag Resilience    | Native Tag Support  | Zero-Crash Emulate  | Resilient (Zero Crash)  |
-+-------------------+---------------------+---------------------+-------------------------+
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
+| Metric Category    | Scenario                     | Raw / Simulated Baseline          | AtomicCache Result   | Improvement / Status    |
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
+| ⚡ Latency / Speed | Database Query vs Cache Hit  | 45.00 ms                          | 0.04 ms              | +99.9% Faster           |
+| 📦 Payload Size    | Large Array Gzip Compression | 95.48 KB                          | 4.13 KB              | 95.7% Memory Saved      |
+| 🧩 Safe Chunking   | Large Dataset (2,500 items)  | Single raw item (Risk: 1MB limit) | 3 safe chunks        | Passed (Keys Preserved) |
+| 🏷️ Tag Resilience  | Non-Redis Virtual Tagging    | Native Tag Support                | Zero-Crash Emulation | Resilient (Zero Crash)  |
++--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
 
 ✨ AtomicCache is operating optimally on [redis] driver with full stampede, compression, and chunking protection.
 ```

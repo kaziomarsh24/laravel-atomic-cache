@@ -3,37 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>laravel-atomic-cache Documentation | Enterprise Caching for Laravel</title>
-    <meta name="description" content="Production-ready, stampede-proof caching package for Laravel 10, 11, 12 and 13 with zero-crash virtual tagging.">
+    <title>laravel-atomic-cache Documentation | High-Performance Caching for Laravel</title>
+    <meta name="description" content="Production-ready, stampede-proof caching engine for Laravel 10, 11, 12, and 13 with zero-crash virtual tagging.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- Offline Compiled Tailwind CSS -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/app.css">
+    <!-- Fallback CDN for standalone preview -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Clean, refined inline code badges matching Alpine.js / Tailwind documentation */
+        code:not(pre code) {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.84em;
+            font-weight: 500;
+            padding: 0.15rem 0.35rem;
+            border-radius: 0.25rem;
+            background-color: #f1f5f9;
+            color: #0f172a;
+            border: 1px solid #e2e8f0;
+            display: inline-block;
+            line-height: 1.25;
+            vertical-align: baseline;
+        }
+        .dark code:not(pre code) {
+            background-color: #1e293b !important;
+            color: #f1f5f9 !important;
+            border-color: #334155 !important;
+        }
+        /* High-contrast code block tokens */
+        .token-keyword { color: #ff7b72 !important; font-weight: 600; }
+        .token-class { color: #79c0ff !important; font-weight: 600; }
+        .token-function { color: #d2a8ff !important; }
+        .token-string { color: #7ee787 !important; }
+        .token-number { color: #ffa657 !important; }
+        .token-variable { color: #ffa657 !important; font-weight: 500; }
+        .token-comment { color: #8b949e !important; font-style: italic; }
+        .token-operator { color: #ff7b72 !important; }
+        .token-property { color: #79c0ff !important; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
 </head>
 <body class="bg-white dark:bg-[#0e1117] text-slate-800 dark:text-zinc-200 min-h-screen transition-colors duration-200 antialiased font-sans">
 
     <!-- Top Navbar -->
-    <header class="sticky top-0 z-40 h-16 border-b border-slate-200 dark:border-zinc-800 bg-white/90 dark:bg-[#0e1117]/90 backdrop-blur-md px-6 md:px-8 flex items-center justify-between">
-        <div class="flex items-center gap-4">
+    <header class="sticky top-0 z-40 h-16 border-b border-slate-200 dark:border-zinc-800 bg-white/90 dark:bg-[#0e1117]/90 backdrop-blur-md px-4 sm:px-6 md:px-8 flex items-center justify-between">
+        <div class="flex items-center gap-3 sm:gap-4">
+            <!-- Mobile Menu Toggle Button -->
+            <button id="mobileMenuBtn" class="md:hidden p-1.5 rounded-md border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white" aria-label="Toggle navigation menu">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+
             <a href="#overview" class="flex items-center gap-2.5 text-slate-900 dark:text-white font-bold text-sm tracking-tight hover:opacity-90 transition-opacity">
-                <div class="w-6 h-6 rounded bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-extrabold text-xs shadow-sm">
+                <div class="w-6 h-6 rounded bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center font-extrabold text-xs shadow-xs">
                     AC
                 </div>
                 <span>laravel-atomic-cache</span>
             </a>
-            <span class="text-slate-300 dark:text-zinc-700 font-light">/</span>
-            <span class="text-xs font-medium text-slate-500 dark:text-zinc-400">Documentation</span>
+            <span class="text-slate-300 dark:text-zinc-700 font-light hidden sm:inline">/</span>
+            <span class="text-xs font-medium text-slate-500 dark:text-zinc-400 hidden sm:inline">Docs</span>
         </div>
 
-        <div class="flex items-center gap-4">
-            <a href="https://github.com/kaziomarsh24/laravel-atomic-cache" target="_blank" rel="noopener" class="text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
+        <div class="flex items-center gap-3 sm:gap-4">
+            <a href="https://github.com/kaziomarsh24/laravel-atomic-cache" target="_blank" rel="noopener" class="text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                     <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
                 </svg>
-                <span>GitHub</span>
+                <span class="hidden sm:inline">GitHub</span>
             </a>
-            <a href="https://packagist.org/packages/thekaziomar/laravel-atomic-cache" target="_blank" rel="noopener" class="text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+            <a href="https://packagist.org/packages/thekaziomar/laravel-atomic-cache" target="_blank" rel="noopener" class="text-xs font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors hidden sm:inline">
                 Packagist
             </a>
             <button id="themeToggle" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs font-semibold text-slate-700 dark:text-zinc-300 hover:border-slate-300 dark:hover:border-zinc-600 transition-all cursor-pointer" aria-label="Toggle theme">
@@ -50,6 +106,21 @@
         </div>
     </header>
 
+    <!-- Mobile Navigation Drawer -->
+    <div id="mobileDrawer" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs hidden md:hidden">
+        <div class="fixed top-0 left-0 bottom-0 w-72 bg-white dark:bg-[#12161f] border-r border-slate-200 dark:border-zinc-800 p-5 overflow-y-auto">
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200 dark:border-zinc-800">
+                <span class="font-bold text-sm text-slate-900 dark:text-white">Navigation</span>
+                <button id="closeMobileDrawer" class="p-1 rounded text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs" id="mobileNavLinks">
+                <!-- Dynamically populated from sidebar -->
+            </div>
+        </div>
+    </div>
+
     <!-- 3-Column Layout Container -->
     <div class="max-w-7xl mx-auto flex justify-center">
 
@@ -57,252 +128,212 @@
         <aside class="w-64 shrink-0 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto no-scrollbar border-r border-slate-200 dark:border-zinc-800/80 p-5 hidden md:block">
 
             <!-- Version Status Card -->
-            <div class="mb-5 px-3 py-2 rounded-lg bg-slate-50 dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 flex items-center justify-between">
+            <div class="mb-4 px-3 py-2 rounded-lg bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
                     <span class="text-xs font-bold text-slate-800 dark:text-zinc-200">v1.3.3</span>
-                    <span class="text-[11px] font-medium text-slate-400 dark:text-zinc-500">latest</span>
+                    <span class="text-[11px] font-medium text-slate-400 dark:text-zinc-500">stable</span>
                 </div>
-                <span class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">Laravel 13.x</span>
+                <span class="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">PHP 8.2+</span>
             </div>
 
-            <!-- Getting Started Group -->
-            <div class="mb-6">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
-                    Getting Started
+            <!-- Instant Search Input -->
+            <div class="mb-5">
+                <div class="relative">
+                    <input type="text" id="docSearch" placeholder="Filter topics or methods..." class="w-full text-xs px-2.5 py-1.5 pl-8 rounded-md bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-800 dark:text-zinc-200 placeholder-slate-400 dark:placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors">
+                    <svg class="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500 absolute left-2.5 top-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 </div>
-                <ul class="space-y-1">
-                    <li>
-                        <a href="#overview" data-nav="overview" class="sidebar-item flex items-center justify-between px-3 py-1.5 rounded-md text-sm font-semibold transition-all text-slate-900 dark:text-white bg-slate-100 dark:bg-zinc-800/90 border border-slate-200/80 dark:border-zinc-700/80 shadow-xs">
-                            <span>Introduction</span>
-                            <span class="active-dot w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#why-this-exists" data-nav="why-this-exists" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Why This Exists
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#who-is-this-for" data-nav="who-is-this-for" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Who Is This For?
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#limitations" data-nav="limitations" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Honest Limitations
-                        </a>
-                    </li>
-                </ul>
             </div>
 
-            <!-- Installation & Setup Group -->
-            <div class="mb-6">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
-                    Installation & Setup
+            <!-- Sidebar Navigation Links -->
+            <div id="sidebarNav">
+                <!-- Getting Started -->
+                <div class="mb-6 nav-group">
+                    <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
+                        Getting Started
+                    </div>
+                    <ul class="space-y-1">
+                        <li>
+                            <a href="#overview" data-nav="overview" class="sidebar-item flex items-center justify-between px-3 py-1.5 rounded-md text-sm font-semibold transition-all text-slate-900 dark:text-white bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">
+                                <span>Introduction</span>
+                                <span class="active-dot w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#why-this-exists" data-nav="why-this-exists" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                Why AtomicCache?
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#who-is-this-for" data-nav="who-is-this-for" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                Who Is This For?
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#limitations" data-nav="limitations" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                When NOT to Cache
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#quickstart" data-nav="quickstart" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                10-Second Quickstart
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#installation" data-nav="installation" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                Installation & Config
+                            </a>
+                        </li>
+                    </ul>
                 </div>
-                <ul class="space-y-1">
-                    <li>
-                        <a href="#installation" data-nav="installation" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Quick Installation
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#configuration" data-nav="configuration" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Configuration
-                        </a>
-                    </li>
-                </ul>
-            </div>
 
-            <!-- NovaMart Walkthrough Group -->
-            <div class="mb-6">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
-                    NovaMart Walkthrough
+                <!-- Real-World Scenarios -->
+                <div class="mb-6 nav-group">
+                    <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
+                        Real-World Store Guide
+                    </div>
+                    <ul class="space-y-1">
+                        <li>
+                            <a href="#query-macros" data-nav="query-macros" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                1. Product Catalog Queries
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#flash-sale-concurrency" data-nav="flash-sale-concurrency" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                2. Flash Sale Concurrency
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#user-scoped-caching" data-nav="user-scoped-caching" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                3. User Dashboard & Cart
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#auto-clears-cache" data-nav="auto-clears-cache" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                4. Model Invalidation on Commit
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#service-caching" data-nav="service-caching" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                5. Service Layer Architecture
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#blade-caching" data-nav="blade-caching" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                6. Blade Fragment Caching
+                            </a>
+                        </li>
+                    </ul>
                 </div>
-                <ul class="space-y-1">
-                    <li>
-                        <a href="#query-macros" data-nav="query-macros" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Query Macros & Parameters
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#auto-clears-cache" data-nav="auto-clears-cache" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Model Auto Invalidation
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#service-caching" data-nav="service-caching" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Service Layer Caching
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#user-scoped-caching" data-nav="user-scoped-caching" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            User-Scoped Caching
-                        </a>
-                    </li>
-                </ul>
-            </div>
 
-            <!-- Concurrency & Architecture Group -->
-            <div class="mb-6">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
-                    Concurrency & Internals
+                <!-- Engine & Architecture -->
+                <div class="mb-6 nav-group">
+                    <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
+                        Engine & Diagnostics
+                    </div>
+                    <ul class="space-y-1">
+                        <li>
+                            <a href="#engine-superpowers" data-nav="engine-superpowers" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                Compression & Chunking
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#virtual-tagging" data-nav="virtual-tagging" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                Zero-Crash Virtual Tagging
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#diagnostics" data-nav="diagnostics" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                CLI Doctor & Benchmarks
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#cheat-sheet" data-nav="cheat-sheet" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                API Reference Cheat Sheet
+                            </a>
+                        </li>
+                    </ul>
                 </div>
-                <ul class="space-y-1">
-                    <li>
-                        <a href="#flash-sale-case-study" data-nav="flash-sale-case-study" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Flash Sale Concurrency
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#virtual-tagging" data-nav="virtual-tagging" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Virtual Tagging (File/DB)
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#diagnostics" data-nav="diagnostics" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            Auditor & Benchmarks
-                        </a>
-                    </li>
-                </ul>
-            </div>
-
-            <!-- Reference & CV Group -->
-            <div class="mb-6">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-3">
-                    Reference & Portfolio
-                </div>
-                <ul class="space-y-1">
-                    <li>
-                        <a href="#cheat-sheet" data-nav="cheat-sheet" class="sidebar-item block px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                            API Cheat Sheet
-                        </a>
-                    </li>
-
-                </ul>
             </div>
         </aside>
 
         <!-- Center Content Area -->
-        <main class="flex-1 max-w-3xl px-6 md:px-12 py-8 md:py-10">
-
-            <!-- Breadcrumbs -->
-            <div class="flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-zinc-500 mb-3">
-                <a href="#overview" class="hover:text-slate-700 dark:hover:text-zinc-300 transition-colors">Docs</a>
-                <svg class="w-3 h-3 text-slate-300 dark:text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                <span>Getting Started</span>
-                <svg class="w-3 h-3 text-slate-300 dark:text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                <span class="text-slate-700 dark:text-zinc-300 font-bold">Introduction</span>
-            </div>
+        <main class="flex-1 max-w-3xl px-4 sm:px-8 md:px-12 py-8 md:py-10">
 
             <!-- Section 1: Overview -->
             <section id="overview" class="content-section scroll-mt-24">
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-zinc-500 mb-3">
+                    <span>Docs</span>
+                    <span class="text-slate-300 dark:text-zinc-700">/</span>
+                    <span>Getting Started</span>
+                    <span class="text-slate-300 dark:text-zinc-700">/</span>
+                    <span class="text-slate-700 dark:text-zinc-300 font-bold">Introduction</span>
+                </div>
+
                 <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-4">
                     Introduction
                 </h1>
 
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-6 font-normal">
-                    <code class="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-blue-700 dark:text-blue-300 font-semibold">thekaziomar/laravel-atomic-cache</code> is an open-source caching engine for Laravel applications facing real-world traffic surges. Built with full support for <strong>Laravel 10.x, 11.x, 12.x, and 13.x</strong>, it prevents cache stampedes, enables tag-based invalidation across non-Redis stores without crashing, and keeps database load predictable.
+                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-6">
+                    <code>thekaziomar/laravel-atomic-cache</code> is an open-source caching engine for Laravel applications. Built for <strong>Laravel 10.x, 11.x, 12.x, and 13.x</strong>, it solves four common headaches: cache stampedes during traffic spikes, crashes when using cache tags on non-Redis stores, stale data left behind when database transactions fail, and memory exhaustion from large payloads.
                 </p>
 
                 <!-- Compatibility Badges -->
                 <div class="flex flex-wrap gap-2 mb-6">
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 dark:bg-zinc-800/80 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
                         <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                         Laravel 10 / 11 / 12 / 13.x
                     </span>
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 dark:bg-zinc-800/80 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                        PHP 8.2 / 8.3 / 8.4
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                        PHP 8.2 through 8.6
                     </span>
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 dark:bg-zinc-800/80 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                        Zero Redis Required (Works on File & DB)
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                        Works on Redis, File, Database & SQLite
                     </span>
                 </div>
 
-                <!-- Clean Banner -->
-                <div class="my-6 p-4 rounded-lg bg-blue-50/60 dark:bg-zinc-900/80 border border-blue-200/60 dark:border-zinc-800 flex items-start gap-3">
-                    <svg class="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="16" x2="12" y2="12"></line>
-                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                    </svg>
+                <div class="my-6 p-4 rounded-lg bg-blue-50/60 dark:bg-zinc-900 border border-blue-200/60 dark:border-zinc-800 flex items-start gap-3">
                     <div class="text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
-                        <strong class="text-slate-900 dark:text-white font-bold">Drop-in Replacement:</strong> You do not need to rewrite your application. You can continue using standard Laravel cache syntax, or use <code class="text-xs font-mono px-1.5 py-0.5 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200 font-semibold">rememberWithLock()</code> where high concurrency protection is needed.
+                        <strong class="text-slate-900 dark:text-white font-semibold">Drop-in Familiarity:</strong> You do not need to rewrite your application. Use your existing Eloquent queries and repositories. AtomicCache handles fingerprinting, mutex locking, compression, and commit-safe invalidation behind the scenes.
                     </div>
-                </div>
-
-                <!-- Code Editor Preview -->
-                <p class="text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-2">
-                    Here is what it looks like in practice:
-                </p>
-
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-lg">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-zinc-800 text-xs font-mono">
-                        <div class="flex items-center gap-2">
-                            <span class="inline-flex items-center gap-1.5 text-xs text-zinc-300 font-medium">
-                                <svg class="w-3.5 h-3.5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                                app/Services/ProductService.php
-                            </span>
-                        </div>
-                        <button onclick="copyCode(this)" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-sans font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
-                        </button>
-                    </div>
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13.5px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">use</span> <span class="token-class">KaziOmar\AtomicCache\Facades\AtomicCache</span>;
-<span class="token-keyword">use</span> <span class="token-class">App\Models\Product</span>;
-
-<span class="token-comment">// Stampede-proof caching: Only 1 query hits MySQL, even with 1,000 concurrent shoppers</span>
-<span class="token-variable">$products</span> <span class="token-operator">=</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">tags</span>([<span class="token-string">'products'</span>])
-    <span class="token-operator">-&gt;</span><span class="token-function">rememberWithLock</span>(<span class="token-string">'trending_catalog'</span>, <span class="token-number">3600</span>, <span class="token-keyword">function</span> () {
-        <span class="token-keyword">return</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'is_featured'</span>, <span class="token-keyword">true</span>)
-            <span class="token-operator">-&gt;</span><span class="token-function">with</span>(<span class="token-string">'category'</span>)
-            <span class="token-operator">-&gt;</span><span class="token-function">take</span>(<span class="token-number">20</span>)
-            <span class="token-operator">-&gt;</span><span class="token-function">get</span>();
-    });</code></pre>
                 </div>
             </section>
 
             <!-- Section 2: Why This Exists -->
             <section id="why-this-exists" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Why This Exists: The NovaMart Store Story
+                    Why AtomicCache?
                 </h2>
 
                 <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    To understand why this package was created, consider <strong>NovaMart</strong> — a real e-commerce store running on Laravel with 25,000 products and active promotional campaigns.
-                </p>
-
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-6">
-                    Under gentle traffic, Laravel's default <code class="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 font-semibold">Cache::remember()</code> works fine. But during seasonal promotions and traffic spikes, four specific failures frequently cause production downtime:
+                    Consider an e-commerce platform running on Laravel with 25,000 products, active seasonal promotions, and thousands of concurrent buyers. Under low traffic, standard <code>Cache::remember()</code> works fine. But under real-world production load, four core failures often emerge:
                 </p>
 
                 <div class="space-y-3 mb-6">
                     <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
                         <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
-                            1. Midnight Cache Stampede (Dogpiling)
+                            1. Midnight Stampede (Dogpiling)
                         </h3>
                         <p class="text-sm text-slate-600 dark:text-zinc-400 leading-relaxed">
-                            When the 1-hour cache for the catalog expires at 12:00:00 AM, 1,200 active shoppers hit the page simultaneously. Instead of 1 query, Laravel fires 1,200 identical queries to MySQL at the exact same millisecond. Connections max out, resulting in 504 Gateway Timeouts.
+                            When the 1-hour cache expires at midnight and 1,200 shoppers visit the home page, all 1,200 requests hit MySQL at the exact same millisecond to recalculate the same list. Database connections saturate, response times spike, and the server returns 504 Gateway Timeouts.
                         </p>
                     </div>
 
                     <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
                         <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
-                            2. Tag Crash on Local & Staging Environments
+                            2. Tag Crashes on Local & Testing Environments
                         </h3>
                         <p class="text-sm text-slate-600 dark:text-zinc-400 leading-relaxed">
-                            Developers use <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-200/70 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 font-semibold">Cache::tags(['products'])</code> on production with Redis. But when running tests or local development with the <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-200/70 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 font-semibold">file</code> or <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-200/70 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 font-semibold">database</code> cache driver, the app crashes with <code class="text-xs font-mono text-red-600 dark:text-red-400 font-bold">BadMethodCallException: This cache store does not support tagging</code>.
+                            Developers use <code>Cache::tags(['products'])</code> in production with Redis. But when running tests or local development with the <code>file</code> or <code>database</code> cache driver, Laravel crashes with <code>BadMethodCallException: This cache store does not support tagging</code>.
                         </p>
                     </div>
 
                     <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
                         <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
-                            3. Ad Link Cache Fragmentation
+                            3. Marketing Link Cache Fragmentation
                         </h3>
                         <p class="text-sm text-slate-600 dark:text-zinc-400 leading-relaxed">
-                            Marketing campaigns bring traffic with query strings like <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-200/70 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 font-semibold">?utm_source=fb&fbclid=xyz</code>. Standard URL caching treats each click as a brand new page, generating thousands of duplicate cache files for the exact same product and wasting RAM.
+                            Marketing campaigns bring traffic with query strings like <code>?utm_source=fb&amp;fbclid=xyz</code>. Standard URL caching treats each click as a brand new page, generating thousands of duplicate cache files for the exact same product and wasting RAM.
                         </p>
                     </div>
 
@@ -311,7 +342,7 @@
                             4. Memory Exhaustion on Large Catalogs
                         </h3>
                         <p class="text-sm text-slate-600 dark:text-zinc-400 leading-relaxed">
-                            Serializing large catalog arrays (5,000+ items) into Redis or Memcached exhausts memory buffers or hits the 1MB Memcached packet limit. AtomicCache solves this with transparent Gzip compression and multi-chunk partitioning.
+                            Caching a 5,000-item array or collection as one raw key strains memory buffers and hits Memcached's 1MB limit. AtomicCache partitions large datasets into safe chunks and applies Gzip compression automatically.
                         </p>
                     </div>
                 </div>
@@ -323,105 +354,123 @@
                     Who Is This For?
                 </h2>
 
+                <ul class="list-disc pl-5 space-y-2 text-sm text-slate-700 dark:text-zinc-300 mb-6">
+                    <li><strong class="text-slate-900 dark:text-white font-semibold">E-commerce & Marketplaces:</strong> High catalog reads, flash sales, and cart checkouts where database load must stay flat.</li>
+                    <li><strong class="text-slate-900 dark:text-white font-semibold">SaaS Applications:</strong> Endpoints with expensive aggregations, reports, and tenant-scoped summaries.</li>
+                    <li><strong class="text-slate-900 dark:text-white font-semibold">Teams on File/Database Cache:</strong> Anyone developing locally or hosting on platforms without Redis who still wants tag-based invalidation.</li>
+                </ul>
+            </section>
+
+            <!-- Section 4: When NOT to Cache -->
+            <section id="limitations" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
+                    When NOT to Cache
+                </h2>
+
                 <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    This package is built for engineering teams that need reliable caching without unnecessary operational overhead:
+                    Caching is not suitable for all data. Avoid caching in these situations:
                 </p>
 
                 <ul class="list-disc pl-5 space-y-2 text-sm text-slate-700 dark:text-zinc-300 mb-6">
-                    <li><strong class="text-slate-900 dark:text-white font-bold">E-commerce & Marketplaces:</strong> High catalog reads, flash sales, and cart checkouts where database spikes must be contained.</li>
-                    <li><strong class="text-slate-900 dark:text-white font-bold">SaaS Dashboards:</strong> Endpoints with expensive aggregations, analytics, or recurring billing summaries.</li>
-                    <li><strong class="text-slate-900 dark:text-white font-bold">Teams Using Multiple Drivers:</strong> Applications that use Redis in production, but prefer SQLite or File stores in local dev and GitHub Actions CI pipelines.</li>
+                    <li><strong class="text-slate-900 dark:text-white font-semibold">Real-time WebSockets & Chat Messages:</strong> Chat messages (e.g. <code>ChatMessage</code>) should be broadcasted directly via Pusher or Laravel Reverb. Caching them creates unnecessary memory churn without read benefits.</li>
+                    <li><strong class="text-slate-900 dark:text-white font-semibold">High-Frequency GPS & Telemetry:</strong> Live rider location updates sent every 3 seconds belong in Redis Pub/Sub, Kafka, or ClickHouse, not application-level cache.</li>
+                    <li><strong class="text-slate-900 dark:text-white font-semibold">Audit Ledgers & Financial Balances:</strong> Financial transactions and audit logs are write-heavy and must be queried directly from the authoritative database with row locks.</li>
                 </ul>
             </section>
 
-            <!-- Section 4: Honest Limitations -->
-            <section id="limitations" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
+            <!-- Section 5: 10-Second Quickstart -->
+            <section id="quickstart" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Honest Limitations: When NOT To Cache
+                    10-Second Quickstart
                 </h2>
 
                 <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    No caching tool solves every use case. Here is where you should <strong>never</strong> use caching:
+                    If you don't want to think about keys, tag names, or redis commands, follow these two steps:
                 </p>
 
-                <ul class="list-disc pl-5 space-y-2 text-sm text-slate-700 dark:text-zinc-300 mb-8">
-                    <li><strong class="text-slate-900 dark:text-white font-bold">Real-time WebSockets & Chat Messages:</strong> Chat messages (`ChatMessage`) stream directly via Pusher/Reverb. Caching them creates memory churn without read benefits.</li>
-                    <li><strong class="text-slate-900 dark:text-white font-bold">High-Frequency GPS Telemetry:</strong> Live rider location updates sent every 3 seconds should stream into Redis Pub/Sub, Kafka, or ClickHouse, not application-level cache.</li>
-                    <li><strong class="text-slate-900 dark:text-white font-bold">Audit Logs:</strong> Immutable append-only audit records (`AuditLog`) are write-heavy and must be written directly to the database.</li>
-                </ul>
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Step 1: Add Trait to your Model</p>
+                        <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                            <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">use</span> <span class="token-class">KaziOmar\AtomicCache\Traits\AutoClearsCache</span>;
+
+<span class="token-keyword">class</span> <span class="token-class">Product</span> <span class="token-keyword">extends</span> <span class="token-class">Model</span>
+{
+    <span class="token-keyword">use</span> <span class="token-class">AutoClearsCache</span>; <span class="token-comment">// Auto-clears query cache on save/delete after DB commit</span>
+}</code></pre>
+                        </div>
+                    </div>
+
+                    <div>
+                        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Step 2: Append ->atomicCache() to any query</p>
+                        <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                            <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// Zero keys to manage: automatically fingerprinted and tagged with 'products' table</span>
+<span class="token-variable">$products</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'status'</span>, <span class="token-string">'active'</span>)<span class="token-operator">-&gt;</span><span class="token-function">latest</span>()<span class="token-operator">-&gt;</span><span class="token-function">atomicCache</span>(<span class="token-number">3600</span>);
+<span class="token-variable">$single</span>   <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'slug'</span>, <span class="token-variable">$slug</span>)<span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-number">3600</span>);</code></pre>
+                        </div>
+                    </div>
+                </div>
             </section>
 
-            <!-- Section 5: Quick Installation -->
+            <!-- Section 6: Installation -->
             <section id="installation" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Quick Installation
+                    Installation & Configuration
                 </h2>
 
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    Install the package via Composer into any Laravel 10, 11, 12, or 13 project:
+                <div class="my-3 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>terminal</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>composer require thekaziomar/laravel-atomic-cache</code></pre>
+                </div>
+
+                <p class="text-sm text-slate-600 dark:text-zinc-400 my-3">
+                    Publish the optional configuration file if you need to adjust lock durations or compression thresholds:
                 </p>
 
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-zinc-800 text-xs font-mono">
-                        <span class="text-zinc-400">terminal</span>
-                        <button onclick="copyCode(this)" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-sans font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
-                        </button>
+                <div class="my-3 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>terminal</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
                     </div>
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13.5px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code>composer require thekaziomar/laravel-atomic-cache</code></pre>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>php artisan vendor:publish --tag="atomic-cache-config"</code></pre>
                 </div>
             </section>
 
-            <!-- Section 6: Configuration -->
-            <section id="configuration" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
-                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Configuration (Optional)
-                </h2>
-
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    Publish the optional configuration file if you want to customize lock durations, compression thresholds, or key prefixes:
-                </p>
-
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-zinc-800 text-xs font-mono">
-                        <span class="text-zinc-400">terminal</span>
-                        <button onclick="copyCode(this)" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-sans font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
-                        </button>
-                    </div>
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13.5px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code>php artisan vendor:publish --tag="atomic-cache-config"</code></pre>
-                </div>
-            </section>
-
-            <!-- Section 7: Query Macros & Parameter Breakdown -->
+            <!-- Section 7: Scenario 1 - Product Catalog Queries -->
             <section id="query-macros" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
-                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Zero-Key Query Macros: Method Signatures & Parameters
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+                    1. Product Catalog Queries
                 </h2>
-
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    <code>atomic-cache</code> attaches fluent macros directly to Laravel's Eloquent and Query builders: <code class="text-xs font-mono text-blue-600 dark:text-blue-400 font-bold">-&gt;atomicCache()</code> and <code class="text-xs font-mono text-blue-600 dark:text-blue-400 font-bold">-&gt;atomicCacheFirst()</code>.
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-4">
+                    Scenario: Heavy Database Reads with Filters & Pagination
                 </p>
 
-                <!-- Macro Signatures -->
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <div class="px-4 py-2.5 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
-                        Method Signatures
-                    </div>
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. For Collection queries (get / all)</span>
-<span class="token-variable">$builder</span><span class="token-operator">-&gt;</span><span class="token-function">atomicCache</span>(<span class="token-variable">$keyOrTtl</span> <span class="token-operator">=</span> <span class="token-number">3600</span>, <span class="token-variable">$ttl</span> <span class="token-operator">=</span> <span class="token-keyword">null</span>, <span class="token-keyword">array</span> <span class="token-variable">$tags</span> <span class="token-operator">=</span> [], <span class="token-keyword">bool</span> <span class="token-variable">$lock</span> <span class="token-operator">=</span> <span class="token-keyword">false</span>)
-
-<span class="token-comment">// 2. For Single-Record queries (first / find)</span>
-<span class="token-variable">$builder</span><span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-variable">$keyOrTtl</span> <span class="token-operator">=</span> <span class="token-number">3600</span>, <span class="token-variable">$ttl</span> <span class="token-operator">=</span> <span class="token-keyword">null</span>, <span class="token-keyword">array</span> <span class="token-variable">$tags</span> <span class="token-operator">=</span> [], <span class="token-keyword">bool</span> <span class="token-variable">$lock</span> <span class="token-operator">=</span> <span class="token-keyword">false</span>)</code></pre>
+                <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 mb-4 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong>The Problem:</strong> When customers browse your catalog, filter by categories, or paginate through results, recalculating complex SQL joins on every request strains the database server.
+                    <br><br>
+                    <strong>The Solution:</strong> Append <code>->atomicCache()</code> to any Eloquent query. It automatically hashes the SQL statement and bindings into a unique fingerprint, tags it with the table name (<code>products</code>), and returns cached results.
                 </div>
 
-                <!-- Parameter Deep Dive Table -->
-                <h3 class="text-lg font-bold text-slate-900 dark:text-white mt-6 mb-3">
-                    Parameter Deep Dive: When, Why & How
-                </h3>
+                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>app/Http/Controllers/ProductController.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. Cache filtered product collection for 1 hour (3600 seconds)</span>
+<span class="token-variable">$products</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'is_active'</span>, <span class="token-keyword">true</span>)
+    <span class="token-operator">-&gt;</span><span class="token-function">where</span>(<span class="token-string">'category_id'</span>, <span class="token-variable">$categoryId</span>)
+    <span class="token-operator">-&gt;</span><span class="token-function">orderBy</span>(<span class="token-string">'price'</span>, <span class="token-string">'asc'</span>)
+    <span class="token-operator">-&gt;</span><span class="token-function">atomicCache</span>(<span class="token-number">3600</span>);
 
+<span class="token-comment">// 2. Cache a single product detail with stampede lock protection</span>
+<span class="token-variable">$product</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'slug'</span>, <span class="token-variable">$slug</span>)
+    <span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-number">3600</span>, <span class="token-variable">lock</span>: <span class="token-keyword">true</span>);</code></pre>
+                </div>
+
+                <!-- Query Macro Parameters Table -->
                 <div class="overflow-x-auto my-4 border border-slate-200 dark:border-zinc-800 rounded-lg">
                     <table class="w-full text-left text-xs border-collapse">
                         <thead class="bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 font-bold uppercase">
@@ -429,89 +478,152 @@
                                 <th class="p-3">Parameter</th>
                                 <th class="p-3">Type</th>
                                 <th class="p-3">Default</th>
-                                <th class="p-3">Purpose & Recommendation</th>
+                                <th class="p-3">Behavior</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-200 dark:divide-zinc-800 text-slate-600 dark:text-zinc-300">
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$keyOrTtl</td>
-                                <td class="p-3 font-mono">int | string</td>
-                                <td class="p-3 font-mono">3600</td>
-                                <td class="p-3">
-                                    <strong>Dual-mode argument:</strong> Pass an integer like <code>3600</code> to set TTL with automatic deterministic SQL fingerprinting. Or pass a string like <code>'homepage_deals'</code> to force a custom cache key.
-                                </td>
+                                <td class="p-3 font-mono">int | string | null</td>
+                                <td class="p-3 font-mono">null</td>
+                                <td class="p-3">Pass an integer like <code>3600</code> to set TTL with automatic SQL fingerprinting. Or pass a custom key name. If null, uses default config TTL.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$ttl</td>
                                 <td class="p-3 font-mono">int | null</td>
                                 <td class="p-3 font-mono">null</td>
-                                <td class="p-3">
-                                    <strong>TTL in seconds.</strong> Only needed if you passed a custom string key as the 1st parameter (e.g. <code>->atomicCache('deals', 1800)</code>).
-                                </td>
+                                <td class="p-3">Explicit TTL in seconds if you passed a custom string key in the 1st parameter.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$tags</td>
                                 <td class="p-3 font-mono">array</td>
                                 <td class="p-3 font-mono">[]</td>
-                                <td class="p-3">
-                                    <strong>Extra tags.</strong> The macro already tags the model's table name automatically (e.g. <code>products</code>). Use this only if you want cross-entity group tags like <code>['homepage', 'seasonal_sale']</code>.
-                                </td>
+                                <td class="p-3">Additional tags. The table name (e.g. <code>products</code>) is attached automatically.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$lock</td>
                                 <td class="p-3 font-mono">bool</td>
                                 <td class="p-3 font-mono">false</td>
-                                <td class="p-3">
-                                    <strong>Distributed Mutex Lock.</strong> When set to <code>true</code> (or in <code>atomicCacheFirst(5, lock: true)</code>), it acquires an atomic lock when the cache expires. <strong>Always set to true on high-traffic endpoints and flash sales!</strong>
-                                </td>
+                                <td class="p-3">Enable distributed locking (stampede shield) so only 1 request queries MySQL upon cache miss.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- Real Example -->
-                <p class="text-sm font-semibold text-slate-700 dark:text-zinc-300 mt-6 mb-2">
-                    Real-World Usage Examples in NovaMart:
-                </p>
-
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// Example 1: 100% Zero-Key with 1-hour TTL (Standard Catalog)</span>
-<span class="token-variable">$products</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'is_active'</span>, <span class="token-keyword">true</span>)
-    <span class="token-operator">-&gt;</span><span class="token-function">where</span>(<span class="token-string">'stock'</span>, <span class="token-operator">&gt;</span>, <span class="token-number">0</span>)
-    <span class="token-operator">-&gt;</span><span class="token-function">atomicCache</span>(<span class="token-number">3600</span>);
-
-<span class="token-comment">// Example 2: High Concurrency Flash Sale Product (5 seconds TTL + Distributed Lock)</span>
-<span class="token-comment">// 5,000 shoppers hitting this at 8:00 PM only cause 1 single database query!</span>
-<span class="token-variable">$deal</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'id'</span>, <span class="token-variable">$productId</span>)
-    <span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-number">5</span>, <span class="token-variable">lock</span>: <span class="token-keyword">true</span>);
-
-<span class="token-comment">// Example 3: Table Alias Normalization</span>
-<span class="token-comment">// "orders as o" is safely normalized to "orders" tag automatically!</span>
-<span class="token-variable">$orders</span> <span class="token-operator">=</span> <span class="token-class">DB</span><span class="token-operator">::</span><span class="token-function">table</span>(<span class="token-string">'orders as o'</span>)
-    <span class="token-operator">-&gt;</span><span class="token-function">where</span>(<span class="token-string">'o.status'</span>, <span class="token-string">'completed'</span>)
-    <span class="token-operator">-&gt;</span><span class="token-function">atomicCache</span>(<span class="token-number">600</span>);</code></pre>
+                <!-- Marketing Tag Sanitization -->
+                <div class="my-4 p-4 rounded-lg bg-emerald-50/50 dark:bg-zinc-900 border border-emerald-200/60 dark:border-zinc-800">
+                    <h4 class="text-sm font-bold text-emerald-900 dark:text-emerald-400 mb-1">
+                        Marketing Tag Sanitization (Cache Fragmentation Shield)
+                    </h4>
+                    <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
+                        When users visit with ad campaign tags like <code>?page=2&amp;fbclid=xyz&amp;utm_source=fb</code>, AtomicCache automatically strips tracking parameters before calculating the cache fingerprint. Pagination parameters (<code>?page=2</code>, <code>?sort=price</code>) remain isolated, but 10,000 ad clicks share the exact same cache entry instead of duplicating memory.
+                    </p>
                 </div>
             </section>
 
-            <!-- Section 8: Model Auto Invalidation (Static vs Dynamic) -->
-            <section id="auto-clears-cache" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
-                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Model Auto Invalidation: Static vs Dynamic Tags
+            <!-- Section 8: Scenario 2 - Flash Sale Concurrency -->
+            <section id="flash-sale-concurrency" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+                    2. Flash Sale Concurrency
                 </h2>
-
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    The <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-semibold">AutoClearsCache</code> trait hooks into Eloquent lifecycle events (<code class="text-xs font-mono">created</code>, <code class="text-xs font-mono">updated</code>, <code class="text-xs font-mono">deleted</code>, and <code class="text-xs font-mono">restored</code>) strictly inside <code class="text-xs font-mono">DB::afterCommit()</code>. If a transaction rolls back, your cache remains 100% untouched.
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-4">
+                    Scenario: 5,000 Concurrent Buyers vs 10 Limited Inventory Items
                 </p>
 
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-zinc-800 text-xs font-mono">
-                        <span class="text-zinc-400">app/Models/Product.php</span>
-                        <button onclick="copyCode(this)" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-sans font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
-                        </button>
+                <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 mb-4 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong>The Problem:</strong> When a flash sale goes live, thousands of buyers refresh the product page at once. If cache expires, they all hit MySQL at the same second (Cache Stampede). Furthermore, during checkout, race conditions can cause negative stock and overselling.
+                    <br><br>
+                    <strong>The Recommendation:</strong> Use <code>AtomicCache::rememberWithLock()</code> for high-concurrency read shields, and pair with database pessimistic row locking (<code>lockForUpdate()</code>) for write transactions.
+                </div>
+
+                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>app/Http/Controllers/FlashSaleController.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
                     </div>
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">namespace</span> <span class="token-class">App\Models</span>;
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. READ SHIELD: 5,000 shoppers refreshing produce exactly 1 query to MySQL</span>
+<span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">showDeal</span>(<span class="token-keyword">int</span> <span class="token-variable">$productId</span>)
+{
+    <span class="token-keyword">return</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">rememberWithLock</span>(<span class="token-string">"flash_deal:{$productId}"</span>, <span class="token-number">300</span>, <span class="token-keyword">function</span> () <span class="token-keyword">use</span> (<span class="token-variable">$productId</span>) {
+        <span class="token-keyword">return</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'id'</span>, <span class="token-variable">$productId</span>)<span class="token-operator">-&gt;</span><span class="token-function">firstOrFail</span>();
+    }, <span class="token-property">lockSeconds</span>: <span class="token-number">10</span>, <span class="token-property">waitSeconds</span>: <span class="token-number">5</span>);
+}
+
+<span class="token-comment">// 2. WRITE SHIELD: Safe checkout with auto-invalidation on commit</span>
+<span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">checkout</span>(<span class="token-keyword">int</span> <span class="token-variable">$productId</span>, <span class="token-keyword">int</span> <span class="token-variable">$userId</span>)
+{
+    <span class="token-keyword">return</span> <span class="token-class">DB</span><span class="token-operator">::</span><span class="token-function">transaction</span>(<span class="token-keyword">function</span> () <span class="token-keyword">use</span> (<span class="token-variable">$productId</span>, <span class="token-variable">$userId</span>) {
+        <span class="token-variable">$product</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'id'</span>, <span class="token-variable">$productId</span>)<span class="token-operator">-&gt;</span><span class="token-function">lockForUpdate</span>()<span class="token-operator">-&gt;</span><span class="token-function">firstOrFail</span>();
+
+        <span class="token-keyword">if</span> (<span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-property">stock</span> <span class="token-operator">&lt;</span> <span class="token-number">1</span>) {
+            <span class="token-keyword">return</span> <span class="token-function">response</span>()<span class="token-operator">-&gt;</span><span class="token-function">json</span>([<span class="token-string">'error'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'Sold out!'</span>], <span class="token-number">422</span>);
+        }
+
+        <span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-function">decrement</span>(<span class="token-string">'stock'</span>, <span class="token-number">1</span>);
+        <span class="token-variable">$order</span> <span class="token-operator">=</span> <span class="token-class">Order</span><span class="token-operator">::</span><span class="token-function">create</span>([<span class="token-string">'product_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$productId</span>, <span class="token-string">'user_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$userId</span>]);
+
+        <span class="token-comment">// AutoClearsCache purges the cache immediately after DB commit completes</span>
+        <span class="token-keyword">return</span> <span class="token-function">response</span>()<span class="token-operator">-&gt;</span><span class="token-function">json</span>([<span class="token-string">'success'</span> <span class="token-operator">=&gt;</span> <span class="token-keyword">true</span>, <span class="token-string">'order_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$order</span><span class="token-operator">-&gt;</span><span class="token-property">id</span>]);
+    });
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- Section 9: Scenario 3 - User Dashboard & Cart -->
+            <section id="user-scoped-caching" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+                    3. User Dashboard & Cart
+                </h2>
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-4">
+                    Scenario: Private Customer Data Isolation
+                </p>
+
+                <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 mb-4 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong>The Problem:</strong> When caching user carts, order histories, or notification counters, using a global key creates critical security risks where Customer A sees Customer B's cart.
+                    <br><br>
+                    <strong>The Solution:</strong> Use <code>AtomicCache::rememberForUser()</code> or the fluent <code>AtomicCache::forUser()</code> builder. It automatically namespaces the key with the authenticated user ID and forgets cleanly on logout or checkout.
+                </div>
+
+                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>app/Http/Controllers/CartController.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">// 1. Remember cart for active user (key: "user:{auth_id}:active_cart")</span>
+<span class="token-variable">$cart</span> <span class="token-operator">=</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">rememberForUser</span>(<span class="token-string">'active_cart'</span>, <span class="token-number">600</span>, <span class="token-keyword">function</span> () {
+    <span class="token-keyword">return</span> <span class="token-class">Cart</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'user_id'</span>, <span class="token-function">auth</span>()<span class="token-operator">-&gt;</span><span class="token-function">id</span>())<span class="token-operator">-&gt;</span><span class="token-function">with</span>(<span class="token-string">'items'</span>)<span class="token-operator">-&gt;</span><span class="token-function">first</span>();
+});
+
+<span class="token-comment">// 2. Invalidate private user cart after checkout</span>
+<span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">completeCheckout</span>()
+{
+    <span class="token-comment">// Forgets the scoped key "user:{auth_id}:active_cart" for the current customer</span>
+    <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">forUser</span>()<span class="token-operator">-&gt;</span><span class="token-function">forget</span>(<span class="token-string">'active_cart'</span>);
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- Section 10: Scenario 4 - Model Invalidation on Commit -->
+            <section id="auto-clears-cache" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+                    4. Model Invalidation on Commit
+                </h2>
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-4">
+                    Scenario: Catalog Updates and Database Transaction Safety
+                </p>
+
+                <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 mb-4 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong>The Problem:</strong> If an admin updates a product price inside a database transaction, but a third-party payment or billing API fails and rolls back the transaction, conventional model observers flush the cache anyway. Shoppers then see stale or corrupted prices.
+                    <br><br>
+                    <strong>The Solution:</strong> The <code>AutoClearsCache</code> trait connects to model events strictly inside <code>DB::afterCommit()</code>. If a transaction rolls back, your cache remains untouched. When it succeeds, all related tags purge automatically.
+                </div>
+
+                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>app/Models/Product.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">namespace</span> <span class="token-class">App\Models</span>;
 
 <span class="token-keyword">use</span> <span class="token-class">Illuminate\Database\Eloquent\Model</span>;
 <span class="token-keyword">use</span> <span class="token-class">Illuminate\Database\Eloquent\SoftDeletes</span>;
@@ -521,10 +633,10 @@
 {
     <span class="token-keyword">use</span> <span class="token-class">AutoClearsCache</span>, <span class="token-class">SoftDeletes</span>;
 
-    <span class="token-comment">// 1. Static related tags (fixed strings)</span>
+    <span class="token-comment">// 1. Static related tags to flush when any product changes</span>
     <span class="token-keyword">protected</span> <span class="token-keyword">array</span> <span class="token-variable">$relatedCacheTags</span> <span class="token-operator">=</span> [<span class="token-string">'homepage_featured'</span>, <span class="token-string">'catalog_filters'</span>];
 
-    <span class="token-comment">// 2. Dynamic related tags (based on model attributes like store_id or category_id)</span>
+    <span class="token-comment">// 2. Dynamic related tags (based on model properties)</span>
     <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">getRelatedCacheTags</span>(): <span class="token-keyword">array</span>
     {
         <span class="token-keyword">return</span> [
@@ -534,63 +646,27 @@
     }
 }</code></pre>
                 </div>
-
-                <!-- Inspector Command Callout -->
-                <div class="mt-6 p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
-                    <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                        <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        Forgot which tags your models clear? Inspect with CLI:
-                    </h3>
-                    <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-3">
-                        You never have to guess or search through code to find what cache tags each model invalidates. Simply run the architecture inspector to see a complete mapping of primary and related tags across your entire codebase:
-                    </p>
-
-                    <div class="rounded-lg overflow-hidden bg-[#0d1117] border border-zinc-800 text-xs font-mono shadow-sm">
-                        <div class="px-3 py-1.5 bg-[#161b22] border-b border-zinc-800 text-[11px] text-zinc-400 flex justify-between items-center">
-                            <span>terminal</span>
-                            <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
-                        </div>
-                        <pre class="p-3 text-[12px] text-zinc-300 leading-relaxed overflow-x-auto bg-[#0d1117]"><code>$ php artisan atomic-cache:check
-
-Atomic Cache Architecture Audit
-Target Path: app/Models
-
-+-------------------------+--------+---------------------------------+---------------------------------+
-| Model                   | Status | Primary Invalidation            | Tags / Notes                    |
-+-------------------------+--------+---------------------------------+---------------------------------+
-| App\Models\Product      | Active | products, products:{id}         | homepage_featured, catalog_f... |
-| App\Models\Order        | Active | orders, orders:{id}             | sales_summary                   |
-| App\Models\ChatMessage  | Exempt | N/A                             | Real-time Stream (Uncached)     |
-+-------------------------+--------+---------------------------------+---------------------------------+
-
-Summary: 3 models scanned | Active: 2 | Exempt: 1 | Health Score: 100%</code></pre>
-                    </div>
-
-                    <p class="text-xs text-slate-600 dark:text-zinc-400 mt-3 leading-relaxed">
-                        Need to manually flush a specific tag from the terminal? Run: <code class="text-[11px] font-mono px-1 py-0.5 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-200">php artisan atomic-cache:clear homepage_featured</code>
-                    </p>
-                </div>
             </section>
 
-            <!-- Section 9: Service Layer Caching -->
+            <!-- Section 11: Scenario 5 - Service Layer Architecture -->
             <section id="service-caching" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
-                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Service Layer Caching: Consistent Architecture
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+                    5. Service Layer Architecture
                 </h2>
-
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    In enterprise applications, caching belongs inside dedicated Service classes. The <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-semibold">HasAtomicCache</code> trait provides a standard 2-step caching formula for every method:
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-4">
+                    Scenario: Clean Encapsulation in Repositories and Services
                 </p>
 
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-zinc-800 text-xs font-mono">
-                        <span class="text-zinc-400">app/Services/CatalogManager.php</span>
-                        <button onclick="copyCode(this)" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-sans font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
-                        </button>
+                <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 mb-4 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong>The Recommendation:</strong> In enterprise Laravel codebases, caching logic should not clutter controllers. The <code>HasAtomicCache</code> trait gives services declarative argument hashing and granular item vs collection invalidation.
+                </div>
+
+                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>app/Services/CatalogManager.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
                     </div>
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">namespace</span> <span class="token-class">App\Services</span>;
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">namespace</span> <span class="token-class">App\Services</span>;
 
 <span class="token-keyword">use</span> <span class="token-class">KaziOmar\AtomicCache\Traits\HasAtomicCache</span>;
 <span class="token-keyword">use</span> <span class="token-class">App\Models\Product</span>;
@@ -599,331 +675,521 @@ Summary: 3 models scanned | Active: 2 | Exempt: 1 | Health Score: 100%</code></p
 {
     <span class="token-keyword">use</span> <span class="token-class">HasAtomicCache</span>;
 
-    <span class="token-comment">// 💡 Custom Resource Rule: If the class name (CatalogManager) does not match</span>
-    <span class="token-comment">// the database table (products), override $cacheResource to bind them together!</span>
+    <span class="token-comment">// Explicitly define resource tag so it invalidates with the 'products' table</span>
     <span class="token-keyword">protected</span> <span class="token-keyword">string</span> <span class="token-variable">$cacheResource</span> <span class="token-operator">=</span> <span class="token-string">'products'</span>;
-    <span class="token-keyword">protected</span> <span class="token-keyword">int</span> <span class="token-variable">$cacheTTL</span> <span class="token-operator">=</span> <span class="token-number">3600</span>;              <span class="token-comment">// Default 1 hour</span>
-    <span class="token-keyword">protected</span> <span class="token-keyword">bool</span> <span class="token-variable">$cachePerUser</span> <span class="token-operator">=</span> <span class="token-keyword">false</span>;         <span class="token-comment">// Global public catalog</span>
+    <span class="token-keyword">protected</span> <span class="token-keyword">int</span> <span class="token-variable">$cacheTTL</span> <span class="token-operator">=</span> <span class="token-number">3600</span>;
 
-    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">getById</span>(<span class="token-keyword">int</span>|<span class="token-keyword">string</span> <span class="token-variable">$id</span>, <span class="token-keyword">array</span> <span class="token-variable">$with</span> <span class="token-operator">=</span> [])
+    <span class="token-comment">// Flavor 1: Declarative argument hashing</span>
+    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">searchProducts</span>(<span class="token-keyword">string</span> <span class="token-variable">$query</span>, <span class="token-keyword">int</span> <span class="token-variable">$limit</span> <span class="token-operator">=</span> <span class="token-number">20</span>)
     {
-        <span class="token-variable">$callback</span> <span class="token-operator">=</span> <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">with</span>(<span class="token-variable">$with</span>)<span class="token-operator">-&gt;</span><span class="token-function">findOrFail</span>(<span class="token-variable">$id</span>);
-        <span class="token-keyword">return</span> <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">cache</span>(__FUNCTION__, <span class="token-function">func_get_args</span>(), <span class="token-variable">$callback</span>, <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-property">cacheTTL</span>, <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-property">cachePerUser</span>);
+        <span class="token-variable">$callback</span> <span class="token-operator">=</span> <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'name'</span>, <span class="token-string">'like'</span>, <span class="token-string">"%{$query}%"</span>)<span class="token-operator">-&gt;</span><span class="token-function">take</span>(<span class="token-variable">$limit</span>)<span class="token-operator">-&gt;</span><span class="token-function">get</span>();
+        <span class="token-keyword">return</span> <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">cache</span>(<span class="token-keyword">__FUNCTION__</span>, <span class="token-function">func_get_args</span>(), <span class="token-variable">$callback</span>);
     }
 
-    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">getByCategory</span>(<span class="token-keyword">int</span> <span class="token-variable">$categoryId</span>, <span class="token-keyword">int</span> <span class="token-variable">$perPage</span> <span class="token-operator">=</span> <span class="token-number">20</span>)
+    <span class="token-comment">// Flavor 2: Granular item vs collection caching</span>
+    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">find</span>(<span class="token-keyword">int</span> <span class="token-variable">$id</span>)
     {
-        <span class="token-variable">$callback</span> <span class="token-operator">=</span> <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'category_id'</span>, <span class="token-variable">$categoryId</span>)
-            <span class="token-operator">-&gt;</span><span class="token-function">where</span>(<span class="token-string">'is_active'</span>, <span class="token-keyword">true</span>)
-            <span class="token-operator">-&gt;</span><span class="token-function">paginate</span>(<span class="token-variable">$perPage</span>);
+        <span class="token-keyword">return</span> <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">rememberItem</span>(<span class="token-variable">$id</span>, <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">findOrFail</span>(<span class="token-variable">$id</span>));
+    }
 
-        <span class="token-keyword">return</span> <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">cache</span>(__FUNCTION__, <span class="token-function">func_get_args</span>(), <span class="token-variable">$callback</span>, <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-property">cacheTTL</span>, <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-property">cachePerUser</span>);
+    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">update</span>(<span class="token-keyword">int</span> <span class="token-variable">$id</span>, <span class="token-keyword">array</span> <span class="token-variable">$data</span>)
+    {
+        <span class="token-variable">$product</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">findOrFail</span>(<span class="token-variable">$id</span>);
+        <span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-function">update</span>(<span class="token-variable">$data</span>);
+
+        <span class="token-comment">// Precise invalidation:</span>
+        <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">forgetItem</span>(<span class="token-variable">$id</span>);       <span class="token-comment">// Flushes single item tag "products:{$id}"</span>
+        <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">flushCollection</span>();     <span class="token-comment">// Flushes list queries under "products" tag</span>
+
+        <span class="token-keyword">return</span> <span class="token-variable">$product</span>;
     }
 }</code></pre>
                 </div>
             </section>
 
-            <!-- Section 10: User-Scoped Caching -->
-            <section id="user-scoped-caching" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
-                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    User-Scoped Caching: Private Data Isolation
+            <!-- Section 12: Scenario 6 - Blade Fragment Caching -->
+            <section id="blade-caching" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+                    6. Blade Fragment Caching
                 </h2>
-
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    In shopping carts, customer wishlists, and personalized financial dashboards, caching under a global key causes catastrophic data leaks where User A sees User B's cart.
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-4">
+                    Scenario: Heavy View Rendering in Navigation Menus & Sidebars
                 </p>
 
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    Use <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-bold">rememberForUser()</code> to automatically prefix the cache key with the authenticated user's ID:
-                </p>
-
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">use</span> <span class="token-class">KaziOmar\AtomicCache\Facades\AtomicCache</span>;
-<span class="token-keyword">use</span> <span class="token-class">App\Models\Cart</span>;
-
-<span class="token-comment">// Automatically scopes cache to auth()->id() (e.g. "user:42:user_cart")</span>
-<span class="token-variable">$cart</span> <span class="token-operator">=</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">rememberForUser</span>(<span class="token-string">'user_cart'</span>, <span class="token-number">600</span>, <span class="token-keyword">function</span> () {
-    <span class="token-keyword">return</span> <span class="token-class">Cart</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'user_id'</span>, <span class="token-function">auth</span>()<span class="token-operator">-&gt;</span><span class="token-function">id</span>())
-        <span class="token-operator">-&gt;</span><span class="token-function">with</span>(<span class="token-string">'items.product'</span>)
-        <span class="token-operator">-&gt;</span><span class="token-function">first</span>();
-});</code></pre>
+                <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 mb-4 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong>The Problem:</strong> Multi-level category trees and megamenus require rendering dozens of nested HTML elements. Re-rendering this on every HTTP request burns CPU cycles even when database results are cached.
+                    <br><br>
+                    <strong>The Solution:</strong> Use <code>@atomicCache</code> to cache the fully rendered HTML string directly in Blade.
                 </div>
-            </section>
 
-            <!-- Section 11: Flash Sale Concurrency -->
-            <section id="flash-sale-case-study" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
-                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Flash Sale Architecture: 10 Stock vs 5,000 Users
-                </h2>
-
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    The ultimate e-commerce test: <strong>NovaMart launches a Flash Sale with exactly 10 units of an iPhone. 5,000 shoppers click "Buy Now" at the exact same millisecond.</strong>
-                </p>
-
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-zinc-800 text-xs font-mono">
-                        <span class="text-zinc-400">app/Http/Controllers/FlashSaleController.php</span>
-                        <button onclick="copyCode(this)" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-sans font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
-                        </button>
+                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                    <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-zinc-800 text-xs font-mono text-zinc-400">
+                        <span>resources/views/partials/navigation.blade.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-white cursor-pointer transition-colors">Copy</button>
                     </div>
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-keyword">namespace</span> <span class="token-class">App\Http\Controllers</span>;
-
-<span class="token-keyword">use</span> <span class="token-class">Illuminate\Support\Facades\DB</span>;
-<span class="token-keyword">use</span> <span class="token-class">App\Models\Product</span>;
-<span class="token-keyword">use</span> <span class="token-class">App\Models\Order</span>;
-
-<span class="token-keyword">class</span> <span class="token-class">FlashSaleController</span>
-{
-    <span class="token-comment">// STEP 1: READ SHIELD - 5,000 users refreshing the product page</span>
-    <span class="token-comment">// Zero-key query macro with 5s TTL + lock absorbs 5,000 requests into 1 single query!</span>
-    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">show</span>(<span class="token-keyword">int</span> <span class="token-variable">$productId</span>)
-    {
-        <span class="token-keyword">return</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'id'</span>, <span class="token-variable">$productId</span>)
-            <span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-number">5</span>, <span class="token-variable">lock</span>: <span class="token-keyword">true</span>);
-    }
-
-    <span class="token-comment">// STEP 2: WRITE SHIELD - Atomic Row Locking prevents overselling</span>
-    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">checkout</span>(<span class="token-keyword">int</span> <span class="token-variable">$productId</span>, <span class="token-keyword">int</span> <span class="token-variable">$userId</span>)
-    {
-        <span class="token-keyword">return</span> <span class="token-class">DB</span><span class="token-operator">::</span><span class="token-function">transaction</span>(<span class="token-keyword">function</span> () <span class="token-keyword">use</span> (<span class="token-variable">$productId</span>, <span class="token-variable">$userId</span>) {
-            <span class="token-comment">// 1. Lock the Eloquent row in MySQL to serialize concurrent checkouts</span>
-            <span class="token-variable">$product</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'id'</span>, <span class="token-variable">$productId</span>)
-                <span class="token-operator">-&gt;</span><span class="token-function">lockForUpdate</span>()
-                <span class="token-operator">-&gt;</span><span class="token-function">firstOrFail</span>();
-
-            <span class="token-keyword">if</span> (<span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-property">stock</span> <span class="token-operator">&lt;</span> <span class="token-number">1</span>) {
-                <span class="token-keyword">return</span> <span class="token-function">response</span>()<span class="token-operator">-&gt;</span><span class="token-function">json</span>([<span class="token-string">'error'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'Sold out!'</span>], <span class="token-number">422</span>);
-            }
-
-            <span class="token-comment">// 2. Decrement inventory safely</span>
-            <span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-function">decrement</span>(<span class="token-string">'stock'</span>, <span class="token-number">1</span>);
-
-            <span class="token-comment">// 3. Record valid order</span>
-            <span class="token-variable">$order</span> <span class="token-operator">=</span> <span class="token-class">Order</span><span class="token-operator">::</span><span class="token-function">create</span>([
-                <span class="token-string">'user_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$userId</span>,
-                <span class="token-string">'product_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$productId</span>,
-                <span class="token-string">'status'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'confirmed'</span>
-            ]);
-
-            <span class="token-comment">// 4. AutoClearsCache trait on Product automatically hooks into DB::afterCommit()</span>
-            <span class="token-comment">// and purges 'products' and "products:{$productId}" cache tags across all stores.</span>
-            <span class="token-comment">// Exactly 10 orders succeed; remaining 4,990 instantly see "Sold out!"</span>
-            <span class="token-keyword">return</span> <span class="token-function">response</span>()<span class="token-operator">-&gt;</span><span class="token-function">json</span>([<span class="token-string">'success'</span> <span class="token-operator">=&gt;</span> <span class="token-keyword">true</span>, <span class="token-string">'order_id'</span> <span class="token-operator">=&gt;</span> <span class="token-variable">$order</span><span class="token-operator">-&gt;</span><span class="token-property">id</span>]);
-        });
-    }
-}</code></pre>
+                    <pre class="p-4 text-[13px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment">{{-- Caches rendered HTML for 3600 seconds, tagged with 'categories' --}}</span>
+<span class="token-keyword">@atomicCache</span>(<span class="token-string">'sidebar_categories'</span>, <span class="token-number">3600</span>, [<span class="token-string">'categories'</span>])
+    <span class="token-operator">&lt;</span><span class="token-keyword">div</span> <span class="token-keyword">class</span><span class="token-operator">=</span><span class="token-string">"category-menu"</span><span class="token-operator">&gt;</span>
+        <span class="token-keyword">@foreach</span>(<span class="token-class">Category</span><span class="token-operator">::</span><span class="token-function">with</span>(<span class="token-string">'children'</span>)<span class="token-operator">-&gt;</span><span class="token-function">get</span>() <span class="token-keyword">as</span> <span class="token-variable">$category</span>)
+            <span class="token-operator">&lt;</span><span class="token-keyword">h4</span><span class="token-operator">&gt;</span>{{ <span class="token-variable">$category</span><span class="token-operator">-&gt;</span><span class="token-property">name</span> }}<span class="token-operator">&lt;</span>/<span class="token-keyword">h4</span><span class="token-operator">&gt;</span>
+            <span class="token-keyword">@foreach</span>(<span class="token-variable">$category</span><span class="token-operator">-&gt;</span><span class="token-property">children</span> <span class="token-keyword">as</span> <span class="token-variable">$child</span>)
+                <span class="token-operator">&lt;</span><span class="token-keyword">span</span><span class="token-operator">&gt;</span>{{ <span class="token-variable">$child</span><span class="token-operator">-&gt;</span><span class="token-property">name</span> }}<span class="token-operator">&lt;</span>/<span class="token-keyword">span</span><span class="token-operator">&gt;</span>
+            <span class="token-keyword">@endforeach</span>
+        <span class="token-keyword">@endforeach</span>
+    <span class="token-operator">&lt;</span>/<span class="token-keyword">div</span><span class="token-operator">&gt;</span>
+<span class="token-keyword">@endAtomicCache</span></code></pre>
                 </div>
             </section>
 
-            <!-- Section 12: Virtual Tagging -->
+            <!-- Section 13: Engine Superpowers -->
+            <section id="engine-superpowers" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
+                    Compression, Chunking & Internals
+                </h2>
+
+                <div class="space-y-4 my-4">
+                    <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            1. Auto Payload Compression (Gzip > 50KB)
+                        </h3>
+                        <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
+                            When serialized data exceeds 50KB, AtomicCache compresses it using <code>gzcompress</code> before storing. This reduces Redis memory consumption by 70% to 95% and decompresses transparently on retrieval.
+                        </p>
+                    </div>
+
+                    <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            2. Transparent Chunking with MGET Batching
+                        </h3>
+                        <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
+                            Large collections (1,000+ items) are partitioned into safe chunks (<code>{key}:__chunk__:0</code>, <code>1</code>). When fetched, all chunks are retrieved in a single batch request via Redis MGET, preventing sequential network roundtrips.
+                        </p>
+                    </div>
+
+                    <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            3. Write Deduplication (Cache DNA)
+                        </h3>
+                        <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
+                            Payloads are hashed before writing. If identical data is already stored, AtomicCache skips re-serialization and simply refreshes the expiration TTL in the store.
+                        </p>
+                    </div>
+
+                    <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            4. Expiry Jitter (withJitter)
+                        </h3>
+                        <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
+                            Prevents herd expiry spikes when thousands of keys share the same TTL by adding random variance (±5%):
+                        </p>
+                        <pre class="p-2.5 rounded bg-[#0d1117] text-[12px] font-mono text-[#c9d1d9] overflow-x-auto"><code>AtomicCache::withJitter(0.05)->remember('popular_feed', fn() => getFeed(), 3600);</code></pre>
+                    </div>
+
+                    <div class="p-4 rounded-lg bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800">
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            5. Type-Safe Model Tags
+                        </h3>
+                        <p class="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-2">
+                            Pass Model classes directly to eliminate typos and unlock IDE autocompletion & refactoring safety:
+                        </p>
+                        <pre class="p-2.5 rounded bg-[#0d1117] text-[12px] font-mono text-[#c9d1d9] overflow-x-auto"><code>// 1. Pass Model classes:
+AtomicCache::tags([Product::class, Category::class])->remember('catalog', fn() => ..., 3600);
+
+// 2. Pass Model instances (auto-tags "products:12" and "products"):
+AtomicCache::tags([$product, 42])->remember('deal', fn() => ..., 3600);
+
+// 3. Clear tags using Model classes:
+AtomicCache::clearTags([Product::class, 42]);</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 14: Virtual Tagging -->
             <section id="virtual-tagging" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Virtual Tagging: How File & Database Stores Work
+                    Zero-Crash Virtual Tagging
                 </h2>
 
                 <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    When you call <code class="text-xs font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-bold">AtomicCache::tags(['products'])</code> on non-Redis stores (File, SQLite, Database), the package does not bypass caching or throw exceptions:
+                    In standard Laravel, calling <code>Cache::tags()</code> on the <code>file</code> or <code>database</code> driver throws an immediate exception. AtomicCache implements a transparent <strong>Virtual Tag Engine</strong>:
                 </p>
 
-                <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-700 dark:text-zinc-300 mb-6">
-                    <li>Each tag has an integer version key in store: <code class="text-xs font-mono">atomic:__tag_v__:{tag}</code>.</li>
-                    <li>When storing data, it generates a composite hash: <code class="text-xs font-mono">key:vt:md5(sorted_tag_versions)</code>.</li>
-                    <li>Calling <code class="text-xs font-mono">AtomicCache::clearTags(['products'])</code> increments the tag version from <code>1</code> to <code>2</code>.</li>
-                    <li>Instantly, all old keys point to outdated hashes and are invalidated in 0ms without deleting files or running expensive SQL queries!</li>
+                <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-700 dark:text-zinc-300 mb-4">
+                    <li>Each tag maintains an integer version key in the store: <code>atomic:__tag_v__:{tag}</code>.</li>
+                    <li>Keys incorporate a hash of their tag versions: <code>{key}:vt:md5(sorted_versions)</code>.</li>
+                    <li>Calling <code>AtomicCache::clearTags(['products'])</code> increments the version counter from <code>1</code> to <code>2</code>.</li>
+                    <li>Existing cached entries become instant cache misses in 0 milliseconds, with zero files deleted or slow SQL queries.</li>
                 </ol>
             </section>
 
-            <!-- Section 13: Auditor & Benchmarks -->
+            <!-- Section 15: Diagnostics -->
             <section id="diagnostics" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Production Health Auditor & Benchmarks
+                    CLI Doctor & Benchmarks
                 </h2>
 
-                <p class="text-base text-slate-700 dark:text-zinc-300 leading-relaxed mb-4">
-                    Audit your application models before deployment with built-in Artisan diagnostics:
-                </p>
+                <div class="space-y-4 my-4">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            1. Model Cache Doctor: php artisan atomic-cache:check
+                        </h3>
+                        <p class="text-xs text-slate-600 dark:text-zinc-400 mb-2">
+                            Scans your application models and groups them into three tiers:
+                        </p>
+                        <ul class="list-disc pl-5 text-xs text-slate-600 dark:text-zinc-400 space-y-1 mb-2">
+                            <li><strong class="text-emerald-600 dark:text-emerald-400">Active:</strong> Models using AutoClearsCache (e.g. Product, Order).</li>
+                            <li><strong class="text-cyan-600 dark:text-cyan-400">Exempt:</strong> Models that shouldn't be cached (e.g. ChatMessage, AuditLog, Pivot tables).</li>
+                            <li><strong class="text-amber-600 dark:text-amber-400">Recommended:</strong> Domain models missing cache traits (e.g. Plan, Category).</li>
+                        </ul>
+                        <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                            <pre class="p-3 text-[12px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>php artisan atomic-cache:check --filter=recommended
+php artisan atomic-cache:check --json # For CI/CD audit pipelines</code></pre>
+                        </div>
+                    </div>
 
-                <div class="my-4 rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-md">
-                    <pre class="p-4 md:p-5 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9] bg-[#0d1117]"><code><span class="token-comment"># Audit all Eloquent models & calculate architecture health score</span>
-php artisan atomic-cache:check
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            2. Benchmark Engine: php artisan atomic-cache:bench
+                        </h3>
+                        <p class="text-xs text-slate-600 dark:text-zinc-400 mb-2">
+                            Measures latency, Gzip memory savings, chunking integrity, and tag resilience on your active driver in a structured 5-column breakdown:
+                        </p>
+                        <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs mb-2">
+                            <pre class="p-3 text-[12px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>php artisan atomic-cache:bench --driver=redis --iterations=10</code></pre>
+                        </div>
+                        <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs text-xs font-mono">
+                            <pre class="p-3 text-[11px] text-zinc-300 leading-relaxed overflow-x-auto bg-[#0d1117]"><code>+-------------------+------------------------------+---------------------------+---------------------+-------------------------+
+| Metric Category   | Scenario                     | Raw / Simulated Baseline  | AtomicCache Result  | Improvement / Status    |
++-------------------+------------------------------+---------------------------+---------------------+-------------------------+
+| Latency / Speed   | Database Query vs Cache Hit  | 45.00 ms                  | 0.28 ms             | +99.4% Faster           |
+| Payload Size      | Large Array Gzip Compression | 95.48 KB                  | 4.13 KB             | 95.7% Memory Saved      |
+| Safe Chunking     | Large Dataset (2,500 items)  | Single raw item (>1MB)    | 3 safe chunks       | Passed (Keys Preserved) |
+| Tag Resilience    | Non-Redis Virtual Tagging    | Native Tag Support        | Zero-Crash Emulate  | Resilient (Zero Crash)  |
++-------------------+------------------------------+---------------------------+---------------------+-------------------------+</code></pre>
+                        </div>
+                    </div>
 
-<span class="token-comment"># Filter only models that need attention</span>
-php artisan atomic-cache:check --filter=recommended
-
-<span class="token-comment"># Output as JSON for CI/CD pipelines</span>
-php artisan atomic-cache:check --json
-
-<span class="token-comment"># Run throughput benchmark on your active cache driver</span>
-php artisan atomic-cache:bench</code></pre>
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                            3. Targeted Tag Purging: php artisan atomic-cache:clear
+                        </h3>
+                        <div class="rounded-xl overflow-hidden bg-[#0d1117] border border-slate-300 dark:border-zinc-800 shadow-xs">
+                            <pre class="p-3 text-[12px] font-mono text-[#c9d1d9] bg-[#0d1117]"><code>php artisan atomic-cache:clear products # Purges 'products' tag and key
+php artisan atomic-cache:clear --all    # Clears all entries in active store</code></pre>
+                        </div>
+                    </div>
                 </div>
-
-                <h3 class="text-base font-bold text-slate-900 dark:text-white mt-4 mb-2">
-                    Auditor Classification Tiers:
-                </h3>
-                <ul class="list-disc pl-5 space-y-1.5 text-xs text-slate-700 dark:text-zinc-300">
-                    <li><strong class="text-emerald-600 dark:text-emerald-400 font-bold">Active (Green):</strong> Models using <code>AutoClearsCache</code> (e.g. <code>Product</code>, <code>Order</code>).</li>
-                    <li><strong class="text-cyan-600 dark:text-cyan-400 font-bold">Exempt (Cyan):</strong> Models that SHOULD NOT be cached (e.g. <code>ChatMessage</code>, <code>AuditLog</code>, telemetry).</li>
-                    <li><strong class="text-amber-600 dark:text-amber-400 font-bold">Recommended (Yellow):</strong> High-read models missing cache traits (e.g. <code>Category</code>, <code>Plan</code>).</li>
-                </ul>
             </section>
 
-            <!-- Section 14: API Cheat Sheet -->
+            <!-- Section 16: Cheat Sheet -->
             <section id="cheat-sheet" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mb-4">
-                    Complete API Reference Cheat Sheet
+                    API Reference Cheat Sheet & Helpers
                 </h2>
+
+                <!-- Global Helper Showcase -->
+                <div class="my-4 p-4 rounded-lg bg-blue-50/50 dark:bg-zinc-900 border border-blue-200/60 dark:border-zinc-800">
+                    <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                        Global Helper Function: atomic_cache()
+                    </h3>
+                    <p class="text-xs text-slate-600 dark:text-zinc-400 mb-2">
+                        Use the global helper without importing the Facade:
+                    </p>
+                    <pre class="p-3 rounded bg-[#0d1117] text-[12.5px] font-mono text-[#c9d1d9] overflow-x-auto"><code><span class="token-comment">// 1. Retrieve value or remember</span>
+<span class="token-variable">$data</span> <span class="token-operator">=</span> <span class="token-function">atomic_cache</span>(<span class="token-string">'homepage_banners'</span>, <span class="token-number">3600</span>, <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Banner</span><span class="token-operator">::</span><span class="token-function">all</span>());
+
+<span class="token-comment">// 2. Call fluent builder directly</span>
+<span class="token-variable">$data</span> <span class="token-operator">=</span> <span class="token-function">atomic_cache</span>()<span class="token-operator">-&gt;</span><span class="token-function">tags</span>([<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>])<span class="token-operator">-&gt;</span><span class="token-function">remember</span>(<span class="token-string">'deals'</span>, <span class="token-number">600</span>, <span class="token-variable">$callback</span>);</code></pre>
+                </div>
 
                 <div class="overflow-x-auto my-4 border border-slate-200 dark:border-zinc-800 rounded-lg">
                     <table class="w-full text-left text-xs border-collapse">
                         <thead class="bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 font-bold uppercase">
                             <tr>
-                                <th class="p-3">Method Signature</th>
+                                <th class="p-3">Category & Method Signature</th>
                                 <th class="p-3">Return</th>
-                                <th class="p-3">When To Use</th>
-                                <th class="p-3">When To Avoid</th>
+                                <th class="p-3">Usage & Best Practice</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 dark:divide-zinc-800 text-slate-600 dark:text-zinc-300">
+                            <!-- Core Operations -->
+                            <tr class="bg-slate-50/50 dark:bg-zinc-900/40"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">1. Core Cache Operations (AtomicCache Facade & Helper)</td></tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">remember($key, $ttl, $callback)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Caches computed data. Flexible argument order: supports <code>remember($key, $callback, $ttl)</code> too.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">rememberWithLock($key, $ttl, $fn, $tags, $lockSec, $waitSec)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Atomic distributed lock protection. Only 1 process computes on cache miss; others wait and read.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">rememberForUser($key, $ttl, $fn, $userId = null)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Automatically prefixes cache key with <code>auth()->id()</code> or explicit user ID. Isolates private data.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">get($key, $default = null, $tags = [])</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Retrieve cached value directly, or return default fallback.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">put($key, $value, $ttl = null, $tags = [])</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Store an item directly. Automatically applies Gzip compression if &gt;50KB and uses write deduplication.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">has($key, $tags = [])</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Check if a valid, unexpired key exists in the active cache store.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">forever($key, $value, $tags = [])</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Store item with no expiration (useful for static lookup dictionaries).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">pull($key, $default = null, $tags = [])</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Retrieve item and immediately delete it from store (flash data).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">forget($key, $tags = []) / clear($key)</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Remove an individual item from cache store.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">flush()</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Completely wipe all stored keys from active cache repository.</td>
+                            </tr>
+
+                            <!-- Targeted Invalidation -->
+                            <tr class="bg-slate-50/50 dark:bg-zinc-900/40"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">2. Granular Tag & Resource Invalidation</td></tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">clearTags($tags) / flushTags($tags)</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Invalidate custom tags across Redis, File, Database, and SQLite stores without crashing.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">forgetItem($resource, $id) / clearItem(...)</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Flushes a single item tag (e.g. <code>users:42</code>).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">flushCollection($resource) / clearCollection(...)</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Flushes an entire collection tag (e.g. <code>users</code>).</td>
+                            </tr>
+
+                            <!-- Fluent Builder -->
+                            <tr class="bg-slate-50/50 dark:bg-zinc-900/40"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">3. Fluent Chainable Builder Methods</td></tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::store($driver)</td>
+                                <td class="p-3 font-mono">AtomicCache</td>
+                                <td class="p-3">Switch driver dynamically (e.g. <code>AtomicCache::store('redis')</code> or <code>'file'</code>).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::tags($tags)</td>
+                                <td class="p-3 font-mono">AtomicCache</td>
+                                <td class="p-3">Attach tags. Supports string arrays, <code>Product::class</code>, model instance <code>$product</code>, and numeric IDs.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::ttl($seconds)</td>
+                                <td class="p-3 font-mono">AtomicCache</td>
+                                <td class="p-3">Set explicit Time-To-Live duration in seconds for the fluent chain.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::withLock($lockSec = 10, $waitSec = 5)</td>
+                                <td class="p-3 font-mono">AtomicCache</td>
+                                <td class="p-3">Attach stampede lock protection to fluent builder chain.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::forUser($userId = null)</td>
+                                <td class="p-3 font-mono">AtomicCache</td>
+                                <td class="p-3">Scope fluent operation to authenticated user or specified user ID.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::withJitter($percentage = 0.05)</td>
+                                <td class="p-3 font-mono">AtomicCache</td>
+                                <td class="p-3">Add random variance (±5%) to TTL to prevent simultaneous expiry spikes.</td>
+                            </tr>
+
+                            <!-- Query Macros -->
+                            <tr class="bg-slate-50/50 dark:bg-zinc-900/40"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">4. Eloquent & DB Query Macros</td></tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">->atomicCache($keyOrTtl = 3600, $ttl = null, $tags = [], $lock = false)</td>
+                                <td class="p-3 font-mono">Collection</td>
+                                <td class="p-3">List queries with automatic key fingerprinting and table tagging.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">->atomicCacheFirst($keyOrTtl = 3600, $ttl = null, $tags = [], $lock = false)</td>
+                                <td class="p-3 font-mono">Model | null</td>
+                                <td class="p-3">Single-item queries with optional stampede lock protection.</td>
+                            </tr>
+
+                            <!-- Blade Directives & Helpers -->
+                            <tr class="bg-slate-50/50 dark:bg-zinc-900/40"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">5. Blade Directives & Helpers</td></tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">@atomicCache('key', $ttl, $tags) ... @endAtomicCache</td>
+                                <td class="p-3 font-mono">HTML</td>
+                                <td class="p-3">Cache rendered HTML templates, menus, and sidebars directly in Blade.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">atomic_cache(?string $key = null, mixed $arg2 = null, mixed $arg3 = null)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Global shortcut helper for instance, retrieval, or remembering values.</td>
+                            </tr>
+
+                            <!-- Service Layer -->
+                            <tr class="bg-slate-50/50 dark:bg-zinc-900/40"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">6. Service Layer (HasAtomicCache Trait)</td></tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$this->cache($method, $args, $callback, $ttl, $perUserOrTags, $lock)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Declarative argument hashing for any service method. Normalizes Closures, Models, and queries.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$this->rememberItem($id, $callback, $ttl) / cacheItem(...)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Remembers a single entity by ID under <code>{resource}:{id}</code> item tag.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$this->rememberCollection($key, $callback, $ttl) / rememberList(...)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Remembers a list query under <code>{resource}</code> collection tag with query isolation.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$this->forgetItem($id) / clearItemCache($id)</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Flushes a single item cache tag from within the service.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$this->flushCollection() / clearCollectionCache()</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Flushes the entire collection cache tag for this service resource.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$this->flushAll() / clearAllCache()</td>
+                                <td class="p-3 font-mono">bool</td>
+                                <td class="p-3">Flushes all cache tags related to this service resource.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Environment Variables Reference Table -->
+                <h3 class="text-lg font-bold text-slate-900 dark:text-white mt-8 mb-3">
+                    Environment Variables Reference (.env)
+                </h3>
+                <div class="overflow-x-auto my-4 border border-slate-200 dark:border-zinc-800 rounded-lg">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 font-bold uppercase">
+                            <tr>
+                                <th class="p-3">Variable</th>
+                                <th class="p-3">Default</th>
+                                <th class="p-3">Description</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-200 dark:divide-zinc-800 text-slate-600 dark:text-zinc-300">
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">-&gt;atomicCache($ttl)</td>
-                                <td class="p-3 font-mono">Collection</td>
-                                <td class="p-3">Database list queries with automatic key & table tagging.</td>
-                                <td class="p-3">Real-time WebSocket streaming or append logs.</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_ENABLED</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Global master switch. Set to <code>false</code> in tests to bypass caching.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">-&gt;atomicCacheFirst($ttl, lock: true)</td>
-                                <td class="p-3 font-mono">Model | null</td>
-                                <td class="p-3">Single item queries under heavy concurrent traffic (flash sales).</td>
-                                <td class="p-3">Multi-record collection queries.</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_DEFAULT_TTL</td>
+                                <td class="p-3 font-mono">3600</td>
+                                <td class="p-3">Default cache lifetime in seconds (1 hour).</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">rememberWithLock($key, $ttl, $fn)</td>
-                                <td class="p-3 font-mono">mixed</td>
-                                <td class="p-3">Expensive reports, slow aggregations, traffic burst spikes.</td>
-                                <td class="p-3">Extremely light queries where locking adds unnecessary overhead.</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_STORE</td>
+                                <td class="p-3 font-mono">null</td>
+                                <td class="p-3">Specific cache store (e.g. <code>redis</code>, <code>file</code>). Defaults to Laravel's default store.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">rememberForUser($key, $ttl, $fn)</td>
-                                <td class="p-3 font-mono">mixed</td>
-                                <td class="p-3">Private carts, user profiles, personal financial stats.</td>
-                                <td class="p-3">Public catalog data shared across all customers.</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_PREFIX</td>
+                                <td class="p-3 font-mono">atomic</td>
+                                <td class="p-3">Global key prefix namespace.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">tags([Product::class])</td>
-                                <td class="p-3 font-mono">self</td>
-                                <td class="p-3">Type-safe tag grouping with IDE autocompletion.</td>
-                                <td class="p-3">Typo-prone raw strings.</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_STAMPEDE_ENABLED</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Enables distributed mutex locking during cache recomputations.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">clearTags($tags)</td>
-                                <td class="p-3 font-mono">bool</td>
-                                <td class="p-3">Targeted invalidation across Redis, File, SQLite and Database.</td>
-                                <td class="p-3">Global cache flushing.</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_COMPRESSION_ENABLED</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Enables automatic Gzip payload compression.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_COMPRESSION_THRESHOLD</td>
+                                <td class="p-3 font-mono">51200</td>
+                                <td class="p-3">Minimum payload size in bytes to trigger Gzip compression (50 KB).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNKING_ENABLED</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Enables transparent chunking for mega collections.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_CHUNKING_THRESHOLD</td>
+                                <td class="p-3 font-mono">1000</td>
+                                <td class="p-3">Item count required to partition collections into chunks.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_DEDUPLICATION_ENABLED</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Skips re-serializing identical payloads while refreshing store TTL.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_JITTER_ENABLED</td>
+                                <td class="p-3 font-mono">false</td>
+                                <td class="p-3">Enables random variance on expiry time (±5%) to prevent herd spikes.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </section>
-
-
-
         </main>
 
         <!-- Right Aside Table of Contents -->
-        <aside class="w-60 shrink-0 sticky top-16 h-[calc(100vh-4rem)] p-8 hidden xl:block">
+        <aside class="w-60 shrink-0 sticky top-16 h-[calc(100vh-4rem)] p-8 hidden xl:block overflow-y-auto no-scrollbar">
             <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-4">
                 On this page
             </div>
             <div class="relative border-l border-slate-200 dark:border-zinc-800 ml-1">
-                <ul class="space-y-2.5 text-xs" id="tocList">
-                    <li class="relative pl-4 -ml-px border-l-2 transition-all" data-toc="overview">
-                        <a href="#overview" class="toc-link block font-semibold text-blue-600 dark:text-blue-400">
-                            Introduction
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="why-this-exists">
-                        <a href="#why-this-exists" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Why This Exists
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="who-is-this-for">
-                        <a href="#who-is-this-for" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Who Is This For?
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="limitations">
-                        <a href="#limitations" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Honest Limitations
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="installation">
-                        <a href="#installation" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Quick Installation
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="configuration">
-                        <a href="#configuration" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Configuration
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="query-macros">
-                        <a href="#query-macros" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Query Macros & Parameters
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="auto-clears-cache">
-                        <a href="#auto-clears-cache" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Model Auto Invalidation
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="service-caching">
-                        <a href="#service-caching" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Service Layer Caching
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="user-scoped-caching">
-                        <a href="#user-scoped-caching" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            User-Scoped Caching
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="flash-sale-case-study">
-                        <a href="#flash-sale-case-study" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Flash Sale Concurrency
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="virtual-tagging">
-                        <a href="#virtual-tagging" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Virtual Tagging (File/DB)
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="diagnostics">
-                        <a href="#diagnostics" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            Auditor & Benchmarks
-                        </a>
-                    </li>
-                    <li class="relative pl-4 -ml-px border-l-2 border-transparent transition-all" data-toc="cheat-sheet">
-                        <a href="#cheat-sheet" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">
-                            API Cheat Sheet
-                        </a>
-                    </li>
-
+                <ul class="space-y-2 text-[11.5px]" id="tocList">
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-blue-600 dark:border-blue-400" data-toc="overview"><a href="#overview" class="toc-link block font-semibold text-blue-600 dark:text-blue-400">Introduction</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="why-this-exists"><a href="#why-this-exists" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">Why AtomicCache?</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="who-is-this-for"><a href="#who-is-this-for" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">Who Is This For?</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="limitations"><a href="#limitations" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">When NOT to Cache</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="quickstart"><a href="#quickstart" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">10-Second Quickstart</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="installation"><a href="#installation" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">Installation</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="query-macros"><a href="#query-macros" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">1. Product Catalog</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="flash-sale-concurrency"><a href="#flash-sale-concurrency" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">2. Flash Sales</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="user-scoped-caching"><a href="#user-scoped-caching" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">3. User Dashboard</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="auto-clears-cache"><a href="#auto-clears-cache" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">4. Model Invalidation</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="service-caching"><a href="#service-caching" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">5. Service Layer</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="blade-caching"><a href="#blade-caching" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">6. Blade Fragment</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="engine-superpowers"><a href="#engine-superpowers" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">Compression & Chunking</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="virtual-tagging"><a href="#virtual-tagging" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">Virtual Tagging</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="diagnostics"><a href="#diagnostics" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">Doctor & Benchmarks</a></li>
+                    <li class="relative pl-3.5 -ml-px border-l-2 border-transparent" data-toc="cheat-sheet"><a href="#cheat-sheet" class="toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white">API Reference</a></li>
                 </ul>
             </div>
 
-            <!-- GitHub Source Link -->
-            <div class="mt-8 pt-6 border-t border-slate-200 dark:border-zinc-800 space-y-2.5 text-xs">
+            <div class="mt-8 pt-6 border-t border-slate-200 dark:border-zinc-800 space-y-2 text-xs">
                 <a href="https://github.com/kaziomarsh24/laravel-atomic-cache" target="_blank" rel="noopener" class="flex items-center gap-2 text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
                     <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path><path d="M9 18c-4.51 2-5-2-7-2"></path></svg>
-                    <span>View Repository on GitHub</span>
+                    <span>View Repository</span>
                 </a>
             </div>
         </aside>
 
     </div>
 
-    <!-- Theme, Copy & Auto ScrollSpy Scripts -->
+    <!-- Interactive Scripts -->
     <script>
         // 1. Dark / Light Mode Switcher
         const themeToggle = document.getElementById('themeToggle');
@@ -963,37 +1229,83 @@ php artisan atomic-cache:bench</code></pre>
         function copyCode(btn) {
             const pre = btn.closest('div').parentElement.querySelector('pre');
             navigator.clipboard.writeText(pre.innerText).then(() => {
-                const label = btn.querySelector('span');
+                const label = btn.querySelector('span') || btn;
                 const old = label.textContent;
                 label.textContent = 'Copied!';
                 setTimeout(() => label.textContent = old, 1800);
             });
         }
 
-        // 3. Dynamic ScrollSpy
+        // 3. Instant Search Filter
+        const docSearch = document.getElementById('docSearch');
+        const sidebarItems = document.querySelectorAll('.sidebar-item');
+        const navGroups = document.querySelectorAll('.nav-group');
+
+        docSearch.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+
+            sidebarItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                const matches = text.includes(query);
+                item.parentElement.style.display = matches ? '' : 'none';
+            });
+
+            navGroups.forEach(group => {
+                const visibleItems = group.querySelectorAll('li:not([style*="display: none"])');
+                group.style.display = visibleItems.length > 0 ? '' : 'none';
+            });
+        });
+
+        // 4. Mobile Navigation Drawer
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileDrawer = document.getElementById('mobileDrawer');
+        const closeMobileDrawer = document.getElementById('closeMobileDrawer');
+        const mobileNavLinks = document.getElementById('mobileNavLinks');
+
+        // Clone sidebar nav into mobile drawer
+        mobileNavLinks.innerHTML = document.getElementById('sidebarNav').innerHTML;
+        mobileNavLinks.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileDrawer.classList.add('hidden');
+            });
+        });
+
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileDrawer.classList.remove('hidden');
+        });
+
+        closeMobileDrawer.addEventListener('click', () => {
+            mobileDrawer.classList.add('hidden');
+        });
+
+        mobileDrawer.addEventListener('click', (e) => {
+            if (e.target === mobileDrawer) {
+                mobileDrawer.classList.add('hidden');
+            }
+        });
+
+        // 5. Dynamic ScrollSpy
         const sections = document.querySelectorAll('.content-section');
         const tocItems = document.querySelectorAll('#tocList li');
         const sidebarLinks = document.querySelectorAll('.sidebar-item');
 
         function updateActiveSection(currentId) {
-            // Update Right TOC
             tocItems.forEach(item => {
                 const link = item.querySelector('.toc-link');
                 if (item.getAttribute('data-toc') === currentId) {
-                    item.className = 'relative pl-4 -ml-px border-l-2 border-blue-600 dark:border-blue-400 transition-all';
+                    item.className = 'relative pl-3.5 -ml-px border-l-2 border-blue-600 dark:border-blue-400 transition-all';
                     link.className = 'toc-link block font-bold text-blue-600 dark:text-blue-400';
                 } else {
-                    item.className = 'relative pl-4 -ml-px border-l-2 border-transparent transition-all';
+                    item.className = 'relative pl-3.5 -ml-px border-l-2 border-transparent transition-all';
                     link.className = 'toc-link block text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white';
                 }
             });
 
-            // Update Left Sidebar
             sidebarLinks.forEach(link => {
                 const targetId = link.getAttribute('data-nav');
                 const dot = link.querySelector('.active-dot');
                 if (targetId === currentId) {
-                    link.className = 'sidebar-item flex items-center justify-between px-3 py-1.5 rounded-md text-sm font-semibold transition-all text-slate-900 dark:text-white bg-slate-100 dark:bg-zinc-800/90 border border-slate-200/80 dark:border-zinc-700/80 shadow-xs';
+                    link.className = 'sidebar-item flex items-center justify-between px-3 py-1.5 rounded-md text-sm font-semibold transition-all text-slate-900 dark:text-white bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700';
                     if (!dot) {
                         const newDot = document.createElement('span');
                         newDot.className = 'active-dot w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400';
