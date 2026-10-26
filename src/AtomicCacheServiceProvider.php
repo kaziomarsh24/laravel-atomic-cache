@@ -24,8 +24,6 @@ class AtomicCacheServiceProvider extends ServiceProvider
         $this->app->singleton('atomic-cache', function ($app) {
             return new AtomicCache();
         });
-
-        $this->app->alias('atomic-cache', AtomicCache::class);
     }
 
     /**
@@ -39,28 +37,64 @@ class AtomicCacheServiceProvider extends ServiceProvider
             ], 'atomic-cache-config');
 
             $this->commands([
-                ClearAtomicCacheCommand::class,
                 BenchmarkCommand::class,
+                ClearAtomicCacheCommand::class,
                 CheckAtomicCacheCommand::class,
             ]);
         }
 
         $this->registerBladeDirectives();
         $this->registerQueryMacros();
-
-        if (method_exists($this->app, 'terminating')) {
-            $this->app->terminating(function () {
-                AtomicCacheBladeHelper::reset();
-            });
-        }
     }
 
     /**
-     * Register Eloquent and Database query macros for zero-key fluent query caching.
+     * Register clean Blade @atomicCache and @endAtomicCache directives.
+     */
+    protected function registerBladeDirectives(): void
+    {
+        Blade::directive('atomicCache', function ($expression) {
+            return "<?php if (\\KaziOmar\\AtomicCache\\Blade\\AtomicCacheBladeHelper::setUp({$expression})) : ?>";
+        });
+
+        Blade::directive('endAtomicCache', function () {
+            return "<?php echo \\KaziOmar\\AtomicCache\\Blade\\AtomicCacheBladeHelper::tearDown(); endif; ?>";
+        });
+    }
+
+    /**
+     * Register zero-key query macros for Eloquent and Query Builder.
      */
     protected function registerQueryMacros(): void
     {
-        $macro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) {
+        $fingerprintEagerLoads = function ($builder): string {
+            if (!($builder instanceof \Illuminate\Database\Eloquent\Builder) || !method_exists($builder, 'getEagerLoads')) {
+                return '';
+            }
+
+            $eagerLoads = $builder->getEagerLoads();
+            if (empty($eagerLoads)) {
+                return '';
+            }
+
+            $parts = [];
+            foreach ($eagerLoads as $relation => $constraint) {
+                $part = $relation;
+                if ($constraint instanceof \Closure) {
+                    try {
+                        $ref = new \ReflectionFunction($constraint);
+                        $staticVars = $ref->getStaticVariables();
+                        $part .= ':' . md5($ref->getFileName() . ':' . $ref->getStartLine() . ':' . $ref->getEndLine() . ':' . serialize($staticVars));
+                    } catch (\Throwable) {
+                        $part .= ':constrained';
+                    }
+                }
+                $parts[] = $part;
+            }
+            sort($parts);
+            return implode(';', $parts);
+        };
+
+        $macro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) use ($fingerprintEagerLoads) {
             /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
             $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
 
@@ -83,9 +117,8 @@ class AtomicCacheServiceProvider extends ServiceProvider
             } else {
                 $sql = $this->toSql();
                 $bindings = $this->getBindings();
-                $eagerLoads = $isEloquent && method_exists($this, 'getEagerLoads') ? array_keys($this->getEagerLoads()) : [];
-                sort($eagerLoads);
-                $fingerprint = md5($sql . ':' . serialize($bindings) . ':' . ($modelClass ?? '') . ':' . implode(',', $eagerLoads));
+                $eagerStr = $fingerprintEagerLoads($this);
+                $fingerprint = hash('sha256', $sql . ':' . serialize($bindings) . ':' . ($modelClass ?? '') . ':' . $eagerStr);
                 $cacheKey = "{$table}:query:{$fingerprint}";
             }
 
@@ -117,7 +150,7 @@ class AtomicCacheServiceProvider extends ServiceProvider
         \Illuminate\Database\Eloquent\Builder::macro('atomicCache', $macro);
         \Illuminate\Database\Query\Builder::macro('atomicCache', $macro);
 
-        $firstMacro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) {
+        $firstMacro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) use ($fingerprintEagerLoads) {
             /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
             $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
 
@@ -140,9 +173,8 @@ class AtomicCacheServiceProvider extends ServiceProvider
             } else {
                 $sql = $this->toSql();
                 $bindings = $this->getBindings();
-                $eagerLoads = $isEloquent && method_exists($this, 'getEagerLoads') ? array_keys($this->getEagerLoads()) : [];
-                sort($eagerLoads);
-                $fingerprint = md5($sql . ':' . serialize($bindings) . ':' . ($modelClass ?? '') . ':' . implode(',', $eagerLoads));
+                $eagerStr = $fingerprintEagerLoads($this);
+                $fingerprint = hash('sha256', $sql . ':' . serialize($bindings) . ':' . ($modelClass ?? '') . ':' . $eagerStr);
                 $cacheKey = "{$table}:query:first:{$fingerprint}";
             }
 
@@ -173,21 +205,5 @@ class AtomicCacheServiceProvider extends ServiceProvider
 
         \Illuminate\Database\Eloquent\Builder::macro('atomicCacheFirst', $firstMacro);
         \Illuminate\Database\Query\Builder::macro('atomicCacheFirst', $firstMacro);
-    }
-
-    /**
-     * Register Blade directives for template fragment caching.
-     */
-    protected function registerBladeDirectives(): void
-    {
-        $helper = AtomicCacheBladeHelper::class;
-
-        Blade::directive('atomicCache', function ($expression) use ($helper) {
-            return "<?php if (\\{$helper}::setUp({$expression})): ?>";
-        });
-
-        Blade::directive('endAtomicCache', function () use ($helper) {
-            return "<?php echo \\{$helper}::tearDown(); endif; ?>";
-        });
     }
 }

@@ -1023,5 +1023,123 @@ class AtomicCacheTest extends TestCase
         $miss = AtomicCache::tags([$tag])->get($key);
         $this->assertNull($miss);
     }
-}
 
+    public function test_has_atomic_cache_remember_collection_and_item_respect_caching_enabled_and_per_user(): void
+    {
+        // 1. Verify cachingEnabled = false bypasses cache in rememberCollection & rememberItem
+        $disabledService = new class {
+            use HasAtomicCache;
+            protected bool $cachingEnabled = false;
+            protected string $cacheResource = 'bypass_items';
+        };
+
+        $itemRuns = 0;
+        $disabledService->rememberItem(1, function () use (&$itemRuns) {
+            $itemRuns++;
+            return 'run_1';
+        });
+        $disabledService->rememberItem(1, function () use (&$itemRuns) {
+            $itemRuns++;
+            return 'run_2';
+        });
+        $this->assertEquals(2, $itemRuns, 'cachingEnabled = false must bypass rememberItem');
+
+        $colRuns = 0;
+        $disabledService->rememberCollection('all', function () use (&$colRuns) {
+            $colRuns++;
+            return ['col_1'];
+        });
+        $disabledService->rememberCollection('all', function () use (&$colRuns) {
+            $colRuns++;
+            return ['col_2'];
+        });
+        $this->assertEquals(2, $colRuns, 'cachingEnabled = false must bypass rememberCollection');
+
+        // 2. Verify cachePerUser = true isolates rememberCollection across different users
+        $userService = new class {
+            use HasAtomicCache;
+            protected bool $cachePerUser = true;
+            protected string $cacheResource = 'user_reports';
+        };
+
+        \Illuminate\Support\Facades\Auth::shouldReceive('id')->andReturn('user_alpha', 'user_alpha', 'user_beta');
+
+        $alphaReport = $userService->rememberCollection('daily', fn() => ['user' => 'Alpha Profile']);
+        $alphaCached = $userService->rememberCollection('daily', fn() => ['user' => 'Should Not Compute']);
+        $this->assertEquals('Alpha Profile', $alphaCached['user']);
+
+        $betaReport = $userService->rememberCollection('daily', fn() => ['user' => 'Beta Profile']);
+        $this->assertEquals('Beta Profile', $betaReport['user']);
+        $this->assertNotEquals($alphaReport, $betaReport, 'rememberCollection must isolate cache per user when cachePerUser is true');
+    }
+
+    public function test_has_atomic_cache_supports_allowed_query_parameters_whitelist(): void
+    {
+        $filteredService = new class {
+            use HasAtomicCache;
+            protected array $allowedQueryParams = ['page', 'sort'];
+            protected string $cacheResource = 'secure_catalog';
+        };
+
+        // Simulate incoming request with valid query params + malicious DoS params (?x=1, ?y=2)
+        request()->query->replace([
+            'page' => '2',
+            'sort' => 'price',
+            'attack_vector_1' => 'random_val_1',
+            'attack_vector_2' => 'random_val_2',
+        ]);
+
+        $res1 = $filteredService->rememberCollection('products', fn() => ['count' => 10]);
+
+        // Same page & sort, but attacker changed attack_vector parameters
+        request()->query->replace([
+            'page' => '2',
+            'sort' => 'price',
+            'attack_vector_1' => 'DIFFERENT_VALUE_999',
+        ]);
+
+        $computeCount = 0;
+        $res2 = $filteredService->rememberCollection('products', function () use (&$computeCount) {
+            $computeCount++;
+            return ['count' => 9999];
+        });
+
+        // Must HIT cache because only 'page' and 'sort' are in allowedQueryParams whitelist!
+        $this->assertEquals(0, $computeCount);
+        $this->assertEquals(['count' => 10], $res2);
+
+        request()->query->replace([]);
+    }
+
+    public function test_ttl_supports_carbon_and_date_interval_instances(): void
+    {
+        // 1. Carbon / DateTimeInterface
+        AtomicCache::put('carbon_ttl', 'carbon_val', now()->addHours(2));
+        $this->assertEquals('carbon_val', AtomicCache::get('carbon_ttl'));
+
+        // 2. DateInterval
+        AtomicCache::put('interval_ttl', 'interval_val', new \DateInterval('PT1H'));
+        $this->assertEquals('interval_val', AtomicCache::get('interval_ttl'));
+
+        // 3. remember() with DateTimeInterface
+        $res = AtomicCache::remember('remember_carbon', now()->addMinutes(30), fn() => 'computed_carbon');
+        $this->assertEquals('computed_carbon', $res);
+    }
+
+    public function test_query_macro_with_constrained_eager_loads_generates_distinct_hashes(): void
+    {
+        TestPost::create(['title' => 'Post A', 'stock' => 5]);
+        TestPost::create(['title' => 'Post B', 'stock' => 15]);
+
+        // Relation query with constraint 1 (stock < 10)
+        $result1 = TestPost::with(['comments' => fn($q) => $q->where('stock', '<', 10)])
+            ->atomicCache(60);
+
+        // Relation query with constraint 2 (stock >= 10)
+        $result2 = TestPost::with(['comments' => fn($q) => $q->where('stock', '>=', 10)])
+            ->atomicCache(60);
+
+        $this->assertNotEmpty($result1);
+        $this->assertNotEmpty($result2);
+    }
+}

@@ -2,14 +2,14 @@
 
 namespace KaziOmar\AtomicCache\Traits;
 
-use Illuminate\Support\Facades\DB;
 use KaziOmar\AtomicCache\Facades\AtomicCache;
 
 /**
  * Trait AutoClearsCache
  *
  * Automatically invalidates granular cache tags and related tags on Model save/delete
- * inside DB::afterCommit to prevent race conditions during database transactions.
+ * inside model connection afterCommit to prevent race conditions during database transactions.
+ * Properly respects multi-database connections and tenant database instances.
  */
 trait AutoClearsCache
 {
@@ -39,7 +39,7 @@ trait AutoClearsCache
     }
 
     /**
-     * Clear caches after active database transaction commits.
+     * Clear caches after active database transaction commits on the model's actual connection.
      */
     public function clearModelCacheOnCommit(): void
     {
@@ -50,8 +50,10 @@ trait AutoClearsCache
             }
         };
 
-        if (DB::transactionLevel() > 0) {
-            DB::afterCommit($callback);
+        $connection = $this->getConnection();
+
+        if ($connection && method_exists($connection, 'transactionLevel') && $connection->transactionLevel() > 0) {
+            $connection->afterCommit($callback);
         } else {
             $callback();
         }

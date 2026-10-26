@@ -568,6 +568,7 @@ You can customize caching per service by declaring any of these optional propert
 | **`$cachingEnabled`** | `bool` | `true` | **Service Cache Toggle.** Set to `false` during automated testing or debugging to bypass caching completely and always fetch fresh database records. |
 | **`$cacheTTL`** | `int` | `3600` | **Service-Level Expiry.** Defines the default cache lifetime in seconds for this specific service without overriding global config. |
 | **`$cachePerUser`** | `bool` | `false` | **Automatic User Isolation.** When set to `true`, all cache keys generated in this service are automatically prefixed with the logged-in user's ID (`auth()->id()`), preventing user data leaks. |
+| **`$allowedQueryParams`** | `array` | `[]` | **Security Whitelist (DoS Mitigation).** When specified (e.g. `['page', 'sort', 'category']`), *only* these query parameters are hashed into the cache key. Any unexpected query parameters (`?attacker=1`) are discarded, preventing Cache Pollution and Redis memory exhaustion attacks. |
 | **`$cacheResource`** | `string` | *(auto)* | **Resource Tag & Namespace.** Specifies the cache tag and key prefix (e.g. `'users'`, `'orders'`). Defaults automatically to the model's table or pluralized class name (`UserService` -> `'users'`). |
 
 ### Safe Argument Normalization
@@ -732,6 +733,13 @@ return [
     'jitter' => [
         'enabled' => env('ATOMIC_CACHE_JITTER_ENABLED', false),
         'percentage' => env('ATOMIC_CACHE_JITTER_PERCENTAGE', 5), // ±5%
+    ],
+
+    // Marketing/analytics parameters stripped from request query strings
+    'ignored_query_parameters' => [
+        'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+        'fbclid', 'gclid', 'dclid', 'wbraid', 'gbraid', 'ttclid', 'msclkid',
+        'mc_cid', 'mc_eid', '_ga', '_gl', '_gid', 'ref',
     ],
 ];
 ```

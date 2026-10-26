@@ -6,11 +6,6 @@ use Closure;
 use Illuminate\Support\Str;
 use KaziOmar\AtomicCache\Facades\AtomicCache;
 
-/**
- * Trait HasAtomicCache
- *
- * Provides ultra-simple, declarative caching methods for Services and Repositories.
- */
 trait HasAtomicCache
 {
     /**
@@ -64,41 +59,32 @@ trait HasAtomicCache
             }
         }
 
-        $argHash = md5(serialize($safeArgs));
-        $cacheKey = "{$resource}:{$method}:{$argHash}";
+        $argsHash = !empty($safeArgs) ? ':' . md5(serialize($safeArgs)) : '';
+        $cacheKey = "{$resource}:{$method}{$argsHash}";
 
-        // Handle 5th argument: can be boolean $perUser or explicit array $tags
-        $isPerUser = false;
-        $effectiveTags = [$resource];
+        $tags = is_array($perUserOrTags) ? $perUserOrTags : [$resource];
+        $perUser = is_bool($perUserOrTags)
+            ? $perUserOrTags
+            : (property_exists($this, 'cachePerUser') && $this->cachePerUser === true);
 
-        if (is_bool($perUserOrTags)) {
-            $isPerUser = $perUserOrTags;
-        } elseif (is_array($perUserOrTags)) {
-            $effectiveTags = $perUserOrTags;
+        $instance = AtomicCache::tags($tags);
+        if ($perUser) {
+            $instance = $instance->forUser();
         }
 
-        if (!$isPerUser && property_exists($this, 'cachePerUser') && $this->cachePerUser === true) {
-            $isPerUser = true;
-        }
-
-        $cache = AtomicCache::tags($effectiveTags);
-
-        if ($isPerUser) {
-            $cache = $cache->forUser();
-        }
-
-        return $cache->remember(
+        return $instance->remember(
             $cacheKey,
             $callback,
             $effectiveTtl,
             lock: $lock
         );
     }
+
     /**
-     * Standard Laravel 'remember' style for Service Layer.
+     * Cache using intuitive Laravel method signature: remember($key, $ttl, $callback).
      * Supports both:
-     * - $this->remember('key', 3600, fn() => ...)  // Laravel native order
-     * - $this->remember('key', fn() => ..., 3600)  // Closure-first order
+     * - remember($key, 3600, fn() => ...)
+     * - remember($key, fn() => ..., 3600)
      */
     public function remember(
         string $key,
@@ -130,10 +116,20 @@ trait HasAtomicCache
         array $tags = [],
         bool $lock = false
     ): mixed {
+        if (property_exists($this, 'cachingEnabled') && $this->cachingEnabled === false) {
+            return $callback();
+        }
+
         $effectiveTtl = $ttl ?? (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
+        $perUser = property_exists($this, 'cachePerUser') && $this->cachePerUser === true;
         $effectiveTags = !empty($tags) ? $tags : [$this->getCacheResource()];
 
-        return AtomicCache::tags($effectiveTags)->remember(
+        $instance = AtomicCache::tags($effectiveTags);
+        if ($perUser) {
+            $instance = $instance->forUser();
+        }
+
+        return $instance->remember(
             $key,
             $callback,
             $effectiveTtl,
@@ -146,11 +142,23 @@ trait HasAtomicCache
      */
     public function rememberItem(int|string $id, Closure $callback, ?int $ttl = null): mixed
     {
+        if (property_exists($this, 'cachingEnabled') && $this->cachingEnabled === false) {
+            return $callback();
+        }
+
+        $effectiveTtl = $ttl ?? (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
+        $perUser = property_exists($this, 'cachePerUser') && $this->cachePerUser === true;
+
         $resource = $this->getCacheResource();
         $cacheKey = "{$resource}:{$id}";
         $tags = ["{$resource}:{$id}", $resource];
 
-        return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
+        $instance = AtomicCache::tags($tags);
+        if ($perUser) {
+            $instance = $instance->forUser();
+        }
+
+        return $instance->remember($cacheKey, $callback, $effectiveTtl);
     }
 
     /**
@@ -167,6 +175,13 @@ trait HasAtomicCache
      */
     public function rememberCollection(string $key, Closure $callback, ?int $ttl = null, array $extraArgs = []): mixed
     {
+        if (property_exists($this, 'cachingEnabled') && $this->cachingEnabled === false) {
+            return $callback();
+        }
+
+        $effectiveTtl = $ttl ?? (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
+        $perUser = property_exists($this, 'cachePerUser') && $this->cachePerUser === true;
+
         $resource = $this->getCacheResource();
         $safeArgs = $this->normalizeArguments($extraArgs);
 
@@ -181,7 +196,12 @@ trait HasAtomicCache
         $cacheKey = "{$resource}:list:{$key}{$queryHash}";
         $tags = [$resource];
 
-        return AtomicCache::tags($tags)->remember($cacheKey, $callback, $ttl);
+        $instance = AtomicCache::tags($tags);
+        if ($perUser) {
+            $instance = $instance->forUser();
+        }
+
+        return $instance->remember($cacheKey, $callback, $effectiveTtl);
     }
 
     /**
@@ -270,6 +290,7 @@ trait HasAtomicCache
     /**
      * Get sanitized query parameters excluding common analytics/marketing parameters.
      * Prevents cache fragmentation caused by tracking query strings (e.g. fbclid, utm_source).
+     * Includes DoS mitigation against unbounded parameter attacks.
      */
     protected function getSanitizedRequestQuery(): array
     {
@@ -277,30 +298,52 @@ trait HasAtomicCache
             return [];
         }
 
-        $defaultIgnored = [
-            'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-            'fbclid', 'gclid', 'dclid', 'wbraid', 'gbraid', 'ttclid', 'msclkid',
-            'mc_cid', 'mc_eid', '_ga', '_gl', '_gid', 'ref',
-        ];
-
-        $ignoredKeys = config('atomic-cache.ignored_query_parameters', $defaultIgnored);
-        if (property_exists($this, 'ignoredQueryParams') && is_array($this->ignoredQueryParams)) {
-            $ignoredKeys = array_merge($ignoredKeys, $this->ignoredQueryParams);
-        }
-
         $query = request()->query();
 
-        foreach ($ignoredKeys as $key) {
-            unset($query[$key]);
+        // 1. If service defines an explicit allow-list, ONLY allow those query parameters!
+        if (property_exists($this, 'allowedQueryParams') && is_array($this->allowedQueryParams) && !empty($this->allowedQueryParams)) {
+            $allowedMap = array_flip($this->allowedQueryParams);
+            $query = array_intersect_key($query, $allowedMap);
+        } else {
+            // 2. Otherwise strip common marketing and analytics parameters
+            $defaultIgnored = [
+                'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+                'fbclid', 'gclid', 'dclid', 'wbraid', 'gbraid', 'ttclid', 'msclkid',
+                'mc_cid', 'mc_eid', '_ga', '_gl', '_gid', 'ref',
+            ];
+
+            $ignoredKeys = config('atomic-cache.ignored_query_parameters', $defaultIgnored);
+            if (property_exists($this, 'ignoredQueryParams') && is_array($this->ignoredQueryParams)) {
+                $ignoredKeys = array_merge($ignoredKeys, $this->ignoredQueryParams);
+            }
+
+            foreach ($ignoredKeys as $key) {
+                unset($query[$key]);
+            }
+
+            // Also strip any wildcard utm_* parameters
+            $query = array_filter($query, function ($k) {
+                return !str_starts_with((string) $k, 'utm_');
+            }, ARRAY_FILTER_USE_KEY);
         }
 
-        // Also strip any wildcard utm_* parameters
-        $filtered = array_filter($query, function ($k) {
-            return !str_starts_with((string) $k, 'utm_');
-        }, ARRAY_FILTER_USE_KEY);
+        // 3. Security Hardening: Protect against query string DoS / unbounded parameter explosion
+        // Limit max parameters to 20 and cap value strings to 255 chars to prevent memory exhaustion attacks
+        if (count($query) > 20) {
+            $query = array_slice($query, 0, 20, true);
+        }
 
-        ksort($filtered);
-        return $filtered;
+        $sanitized = [];
+        foreach ($query as $k => $v) {
+            if (is_string($v) && strlen($v) > 255) {
+                $sanitized[$k] = substr($v, 0, 255);
+            } else {
+                $sanitized[$k] = $v;
+            }
+        }
+
+        ksort($sanitized);
+        return $sanitized;
     }
 
     /**

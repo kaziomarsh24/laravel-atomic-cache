@@ -143,7 +143,9 @@ class BenchmarkCommand extends Command
 
         // Inspect manifest
         $store = AtomicCache::store($driver)->getRawStore();
-        $manifest = $store->get("atomic:{$key}");
+        $prefix = config('atomic-cache.prefix', 'atomic');
+        $manifestKey = !empty($prefix) ? "{$prefix}:{$key}" : $key;
+        $manifest = $store->get($manifestKey);
         $isChunked = is_array($manifest) && !empty($manifest['__ac_chunked']);
         $chunksCount = $isChunked ? $manifest['chunks_count'] : 1;
 
@@ -189,7 +191,7 @@ class BenchmarkCommand extends Command
                 [
                     '⚡ Latency / Speed',
                     'Database Query vs Cache Hit',
-                    "{$latency['simulated_db_ms']} ms",
+                    "{$latency['simulated_db_ms']} ms (Simulated DB)",
                     "{$latency['warm_hit_ms']} ms",
                     "<info>+{$latency['speedup_percent']}% Faster</info>",
                 ],
