@@ -1038,14 +1038,14 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                             <!-- Query Macros -->
                             <tr class="bg-slate-50/50 dark:bg-zinc-900/40"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">4. Eloquent & DB Query Macros</td></tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">->atomicCache($keyOrTtl = 3600, $ttl = null, $tags = [], $lock = false)</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">->atomicCache($keyOrTtl = null, $ttl = null, $tags = [], $lock = false)</td>
                                 <td class="p-3 font-mono">Collection</td>
-                                <td class="p-3">List queries with automatic key fingerprinting and table tagging.</td>
+                                <td class="p-3">List queries with automatic key fingerprinting and table tagging (defaults to configured TTL).</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">->atomicCacheFirst($keyOrTtl = 3600, $ttl = null, $tags = [], $lock = false)</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">->atomicCacheFirst($keyOrTtl = null, $ttl = null, $tags = [], $lock = false)</td>
                                 <td class="p-3 font-mono">Model | null</td>
-                                <td class="p-3">Single-item queries with optional stampede lock protection.</td>
+                                <td class="p-3">Single-item queries with optional stampede lock protection (defaults to configured TTL).</td>
                             </tr>
 
                             <!-- Blade Directives & Helpers -->
