@@ -30,6 +30,7 @@ trait ManagesVirtualTags
         // Native taggable store (Redis, Memcached):
         if ($this->supportsTags($store)) {
             try {
+                $this->purgeRedisTaggedKeysIfNeeded($store, $tagList);
                 $store->tags($tagList)->flush();
                 return true;
             } catch (Throwable $e) {
@@ -168,4 +169,57 @@ trait ManagesVirtualTags
         return $this->resolveKeyForStore('', $normalized, $store);
     }
 
+    /**
+     * Purge Redis tagged cache keys directly from Redis sorted sets.
+     * Works around upstream Laravel 10 incompatibility with phpredis >= 6.1.0
+     * where RedisTagSet::entries() starts with cursor '0' instead of null,
+     * causing TaggedCache::flush() to silently fail to scan or delete any keys.
+     */
+    protected function purgeRedisTaggedKeysIfNeeded(Repository $store, array $tagList): void
+    {
+        try {
+            $rawStore = method_exists($store, 'getStore') ? $store->getStore() : null;
+            if ($rawStore instanceof \Illuminate\Cache\RedisStore) {
+                $connection = $rawStore->connection();
+                $prefix = $rawStore->getPrefix();
+
+                foreach ($tagList as $tag) {
+                    $tagKey = $prefix . "tag:{$tag}:entries";
+
+                    // ZRANGE returns all member keys in the set without relying on zscan cursor
+                    $entries = $connection->zrange($tagKey, 0, -1);
+                    if (!empty($entries) && is_array($entries)) {
+                        $keysToDelete = [];
+                        foreach ($entries as $entry) {
+                            if (is_string($entry) && $entry !== '') {
+                                $keysToDelete[] = $prefix . $entry;
+                            }
+                        }
+
+                        if (!empty($keysToDelete)) {
+                            foreach (array_chunk($keysToDelete, 500) as $chunk) {
+                                try {
+                                    $connection->del(...$chunk);
+                                } catch (Throwable) {
+                                    foreach ($chunk as $singleKey) {
+                                        try {
+                                            $connection->del($singleKey);
+                                        } catch (Throwable) {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    try {
+                        $connection->del($tagKey);
+                    } catch (Throwable) {}
+                }
+            }
+        } catch (Throwable) {
+            // Best-effort cleanup fallback
+        }
+    }
+
 }
+

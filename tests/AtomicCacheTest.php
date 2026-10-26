@@ -1016,6 +1016,9 @@ class AtomicCacheTest extends TestCase
             'atomic-cache.chunking.chunk_size' => 50,
         ]);
 
+        \Illuminate\Support\Facades\Cache::forgetDriver('redis');
+        \Illuminate\Support\Facades\Cache::forgetDriver();
+
         $data = [];
         for ($i = 0; $i < 200; $i++) {
             $data["key_{$i}"] = "value_{$i}";
