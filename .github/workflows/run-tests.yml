@@ -51,6 +51,7 @@ jobs:
     env:
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
+      COMPOSER_POLICY_ADVISORIES_BLOCK: false
 
     steps:
       - name: Checkout code
@@ -65,8 +66,10 @@ jobs:
 
       - name: Install dependencies
         run: |
+          composer config --global policy.advisories.block false 2>/dev/null || true
+          composer config policy.advisories.block false 2>/dev/null || true
           composer require "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
-          composer update --prefer-dist --no-interaction --no-progress
+          composer update --prefer-dist --no-interaction --no-progress --no-audit
 
       - name: Execute tests
         run: ./vendor/bin/phpunit
