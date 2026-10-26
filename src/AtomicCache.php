@@ -8,6 +8,7 @@ use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 class AtomicCache
@@ -18,7 +19,7 @@ class AtomicCache
     protected bool $useLock = false;
     protected ?int $lockSeconds = null;
     protected ?int $waitSeconds = null;
-    protected ?int $targetUserId = null;
+    protected int|string|null $targetUserId = null;
     protected ?float $customJitter = null;
 
     public function __construct(?string $store = null)
@@ -76,7 +77,7 @@ class AtomicCache
     public function forUser(int|string|null $userId = null): self
     {
         $clone = clone $this;
-        $clone->targetUserId = $userId !== null ? (int) $userId : (Auth::id() ?? 0);
+        $clone->targetUserId = $userId !== null ? $userId : (Auth::id() ?? 0);
         return $clone;
     }
 
@@ -129,21 +130,21 @@ class AtomicCache
             return $callback();
         }
 
-        $ttl = $this->calculateTtl($customTtl);
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $shouldLock = $this->useLock || $lock || config('atomic-cache.stampede.enabled', false);
 
         if ($shouldLock) {
-            return $this->rememberWithLockInternal($key, $callback, $ttl, $tags);
+            return $this->rememberWithLockInternal($key, $callback, $customTtl, $tags);
         }
 
-        $cached = $this->get($key, null, $tags);
-        if ($cached !== null) {
+        $sentinel = new \stdClass();
+        $cached = $this->get($key, $sentinel, $tags);
+        if ($cached !== $sentinel) {
             return $cached;
         }
 
         $value = $callback();
-        $this->put($key, $value, $ttl, $tags);
+        $this->put($key, $value, $customTtl, $tags);
 
         return $value;
     }
@@ -354,17 +355,22 @@ class AtomicCache
     protected function refreshKeyTtl(string $effectiveKey, int $ttl, Repository $repository): void
     {
         try {
-            $rawStore = $this->getRawStore();
-            if ($rawStore instanceof \Illuminate\Cache\RedisStore) {
-                $prefix = $rawStore->getPrefix();
-                $rawStore->connection()->expire($prefix . $effectiveKey, $ttl);
-                return;
-            }
-
-            // For non-Redis stores (file, database, memcached, array), refresh TTL with already-packed payload
             $raw = $repository->get($effectiveKey);
             if ($raw !== null) {
+                // Refresh TTL on existing packed payload
                 $repository->put($effectiveKey, $raw, $ttl);
+            }
+
+            // If this is a chunked payload, refresh each individual chunk's TTL as well
+            if (is_array($raw) && !empty($raw['__ac_chunked'])) {
+                $chunksCount = (int) ($raw['chunks_count'] ?? 0);
+                for ($i = 0; $i < $chunksCount; $i++) {
+                    $chunkKey = "{$effectiveKey}:__chunk__:{$i}";
+                    $chunkRaw = $repository->get($chunkKey);
+                    if ($chunkRaw !== null) {
+                        $repository->put($chunkKey, $chunkRaw, $ttl);
+                    }
+                }
             }
         } catch (Throwable) {
             // Silently ignore TTL refresh errors
@@ -461,15 +467,14 @@ class AtomicCache
         }
 
         // Graceful fallback for non-taggable stores (file, database):
-        // Increment virtual tag version keys to invalidate all related entries instantly!
+        // Update virtual tag version tokens to invalidate all related entries instantly!
         $allSuccess = true;
         foreach ($tagList as $tag) {
             try {
                 $tagVersionKey = $this->formatVirtualTagKey($tag);
-                $current = (int) $store->get($tagVersionKey, 1);
-                $store->forever($tagVersionKey, $current + 1);
+                $store->forever($tagVersionKey, (string) Str::uuid());
             } catch (Throwable $e) {
-                Log::warning("[AtomicCache] Virtual tag increment failed for '{$tag}': " . $e->getMessage());
+                Log::warning("[AtomicCache] Virtual tag update failed for '{$tag}': " . $e->getMessage());
                 $allSuccess = false;
             }
         }
@@ -541,12 +546,13 @@ class AtomicCache
     protected function rememberWithLockInternal(
         string $key,
         Closure $callback,
-        int $ttl,
-        array $tags
+        ?int $ttl = null,
+        array $tags = []
     ): mixed {
         // Fast path: cache hit
-        $cached = $this->get($key, null, $tags);
-        if ($cached !== null) {
+        $sentinel = new \stdClass();
+        $cached = $this->get($key, $sentinel, $tags);
+        if ($cached !== $sentinel) {
             return $cached;
         }
 
@@ -556,28 +562,31 @@ class AtomicCache
         $lockKey = 'lock:' . $this->formatKey($key);
 
         if ($this->supportsLock($store)) {
+            $lock = null;
+            $acquired = false;
+
             try {
                 $lock = $store->lock($lockKey, $lockSeconds);
                 $acquired = $lock->block($waitSeconds);
-
-                if ($acquired) {
-                    try {
-                        // Double-check: another process might have computed it while we waited
-                        $cached = $this->get($key, null, $tags);
-                        if ($cached !== null) {
-                            return $cached;
-                        }
-
-                        $value = $callback();
-                        $this->put($key, $value, $ttl, $tags);
-                        return $value;
-                    } finally {
-                        optional($lock)->release();
-                    }
-                }
             } catch (Throwable $e) {
                 // If lock fails or driver does not support lock provider, fallback to executing callback
                 Log::info("[AtomicCache] Lock bypass on key '{$key}': " . $e->getMessage());
+            }
+
+            if ($acquired) {
+                try {
+                    // Double-check: another process might have computed it while we waited
+                    $cached = $this->get($key, $sentinel, $tags);
+                    if ($cached !== $sentinel) {
+                        return $cached;
+                    }
+
+                    $value = $callback();
+                    $this->put($key, $value, $ttl, $tags);
+                    return $value;
+                } finally {
+                    optional($lock)->release();
+                }
             }
         }
 
@@ -613,7 +622,17 @@ class AtomicCache
         foreach ($tags as $tag) {
             $tagVersionKey = $this->formatVirtualTagKey($tag);
             $version = $store->get($tagVersionKey);
-            $versions[$tag] = $version !== null ? (int) $version : 1;
+            if ($version === null || $version === '') {
+                $newToken = (string) Str::uuid();
+                if (method_exists($store, 'add')) {
+                    $store->add($tagVersionKey, $newToken, 86400 * 365);
+                    $version = $store->get($tagVersionKey) ?? $newToken;
+                } else {
+                    $store->forever($tagVersionKey, $newToken);
+                    $version = $newToken;
+                }
+            }
+            $versions[$tag] = (string) $version;
         }
         ksort($versions);
         return $versions;
@@ -644,7 +663,7 @@ class AtomicCache
                     $normalized[] = "{$table}:{$id}";
                 }
                 $normalized[] = $table;
-            } elseif (is_string($tag) && class_exists($tag) && is_subclass_of($tag, \Illuminate\Database\Eloquent\Model::class)) {
+            } elseif (is_string($tag) && str_contains($tag, '\\') && class_exists($tag) && is_subclass_of($tag, \Illuminate\Database\Eloquent\Model::class)) {
                 // Type-safe model class (e.g. Product::class -> 'products')
                 $normalized[] = (new $tag)->getTable();
             } elseif ((is_string($tag) || is_numeric($tag)) && (string) $tag !== '') {

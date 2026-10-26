@@ -207,7 +207,12 @@ trait HasAtomicCache
     {
         return array_map(function ($arg) {
             if ($arg instanceof Closure) {
-                return 'Closure#' . spl_object_hash($arg);
+                try {
+                    $ref = new \ReflectionFunction($arg);
+                    return 'Closure:' . md5($ref->getFileName() . ':' . $ref->getStartLine() . ':' . $ref->getEndLine());
+                } catch (\Throwable) {
+                    return 'Closure';
+                }
             }
 
             if (is_object($arg) && method_exists($arg, 'getKey') && method_exists($arg, 'getTable')) {
@@ -216,14 +221,22 @@ trait HasAtomicCache
             }
 
             if (is_object($arg) && $arg instanceof \Illuminate\Http\Request) {
-                return $arg->all();
+                $clean = $arg->except(['_token', '_method']);
+                ksort($clean);
+                return $clean;
             }
 
             if (is_object($arg)) {
+                if (method_exists($arg, '__toString')) {
+                    return (string) $arg;
+                }
+                if ($arg instanceof \JsonSerializable) {
+                    return $arg->jsonSerialize();
+                }
                 if (method_exists($arg, 'toArray')) {
                     return $arg->toArray();
                 }
-                return get_class($arg) . '#' . spl_object_hash($arg);
+                return get_class($arg) . ':' . md5(serialize($arg));
             }
 
             return $arg;
@@ -266,9 +279,12 @@ trait HasAtomicCache
         }
 
         // Also strip any wildcard utm_* parameters
-        return array_filter($query, function ($k) {
+        $filtered = array_filter($query, function ($k) {
             return !str_starts_with((string) $k, 'utm_');
         }, ARRAY_FILTER_USE_KEY);
+
+        ksort($filtered);
+        return $filtered;
     }
 
     /**

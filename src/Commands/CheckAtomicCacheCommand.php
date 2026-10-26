@@ -191,13 +191,15 @@ class CheckAtomicCacheCommand extends Command
      */
     protected function displaySummaryBox(int $total, int $active, int $exempt, int $recommended, int $score): void
     {
+        $rating = $score >= 90 ? 'Optimal' : ($score >= 70 ? 'Good' : 'Needs Attention');
+
         $this->line('+-------------------------------------------------------------------------+');
-        $this->line(sprintf('| %-71s |', "Summary: {$total} models scanned"));
-        $this->line(sprintf('| %-71s |', "• Active (AutoClearsCache): {$active}"));
-        $this->line(sprintf('| %-71s |', "• Exempt (Telemetry / Ephemeral): {$exempt}"));
-        $this->line(sprintf('| %-71s |', "• Recommended: {$recommended}"));
+        $this->line($this->formatBoxLine("Summary: {$total} models scanned"));
+        $this->line($this->formatBoxLine("• Active (AutoClearsCache): {$active}"));
+        $this->line($this->formatBoxLine("• Exempt (Telemetry / Ephemeral): {$exempt}"));
+        $this->line($this->formatBoxLine("• Recommended: {$recommended}"));
         $this->line('|                                                                         |');
-        $this->line(sprintf('| %-71s |', "Architecture Health Score: {$score}% (Optimal Balance)"));
+        $this->line($this->formatBoxLine("Architecture Health Score: {$score}% ({$rating})"));
         $this->line('+-------------------------------------------------------------------------+');
 
         if ($recommended > 0) {
@@ -297,20 +299,49 @@ class CheckAtomicCacheCommand extends Command
     }
 
     /**
-     * Extract class name including namespace from file path.
+     * Format a line inside the summary card ensuring perfect border alignment.
+     */
+    protected function formatBoxLine(string $text, int $targetWidth = 71): string
+    {
+        $currentWidth = mb_strwidth($text);
+        $padLength = max(0, $targetWidth - $currentWidth);
+        return '| ' . $text . str_repeat(' ', $padLength) . ' |';
+    }
+
+    /**
+     * Extract class name including namespace from file path safely using PHP tokens.
      */
     protected function getClassFromFile(string $filePath): ?string
     {
         $contents = file_get_contents($filePath);
+        $tokens = token_get_all($contents);
         $namespace = '';
         $class = '';
+        $count = count($tokens);
 
-        if (preg_match('/namespace\s+(.+?);/', $contents, $matches)) {
-            $namespace = trim($matches[1]);
-        }
+        for ($i = 0; $i < $count; $i++) {
+            if ($tokens[$i][0] === T_NAMESPACE) {
+                for ($j = $i + 1; $j < $count; $j++) {
+                    if ($tokens[$j] === ';') {
+                        break;
+                    }
+                    if (is_array($tokens[$j]) && in_array($tokens[$j][0], [T_NAME_QUALIFIED, T_STRING])) {
+                        $namespace .= $tokens[$j][1];
+                    }
+                }
+            }
 
-        if (preg_match('/class\s+([a-zA-Z0-9_]+)/', $contents, $matches)) {
-            $class = trim($matches[1]);
+            if ($tokens[$i][0] === T_CLASS) {
+                for ($j = $i + 1; $j < $count; $j++) {
+                    if ($tokens[$j] === '{' || $tokens[$j] === ';') {
+                        break;
+                    }
+                    if (is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) {
+                        $class = $tokens[$j][1];
+                        break 2;
+                    }
+                }
+            }
         }
 
         return ($namespace && $class) ? "{$namespace}\\{$class}" : null;

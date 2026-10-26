@@ -16,6 +16,11 @@ class TestPost extends Model
 
     protected $table = 'test_posts';
     protected $guarded = [];
+
+    public function comments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TestPost::class, 'id');
+    }
 }
 
 class TestService
@@ -701,6 +706,141 @@ class AtomicCacheTest extends TestCase
         // Cache hit
         $cachedPosts = \Illuminate\Support\Facades\DB::table('test_posts as p')->where('title', 'Aliased Post')->atomicCache(60);
         $this->assertCount(1, $cachedPosts);
+    }
+
+    public function test_for_user_supports_uuid_and_string_ids_without_data_leakage(): void
+    {
+        $userA = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
+        $userB = '8a0ceb3c-2a6c-4c9e-8bcc-1a0c6a2cba5c';
+
+        AtomicCache::forUser($userA)->put('cart', ['items' => ['MacBook Pro']], 60);
+        AtomicCache::forUser($userB)->put('cart', ['items' => ['iPhone 16']], 60);
+
+        $cartA = AtomicCache::forUser($userA)->get('cart');
+        $cartB = AtomicCache::forUser($userB)->get('cart');
+
+        $this->assertEquals(['items' => ['MacBook Pro']], $cartA);
+        $this->assertEquals(['items' => ['iPhone 16']], $cartB);
+        $this->assertNotEquals($cartA, $cartB);
+    }
+
+    public function test_remember_with_lock_bubbles_callback_exception_and_does_not_retry(): void
+    {
+        $executionCount = 0;
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Simulated DB query error');
+
+        try {
+            AtomicCache::rememberWithLock('test_failing_query', function () use (&$executionCount) {
+                $executionCount++;
+                throw new \RuntimeException('Simulated DB query error');
+            }, 60);
+        } finally {
+            $this->assertEquals(1, $executionCount, 'Failing callback must only execute once without being retried in fallback');
+        }
+    }
+
+    public function test_virtual_tag_invalidation_uses_uuid_tokens_and_prevents_stale_resurrection(): void
+    {
+        $driver = 'array';
+        $key = 'vt_test_item_' . uniqid();
+
+        AtomicCache::store($driver)->tags(['products'])->put($key, 'original_version', 60);
+        $this->assertEquals('original_version', AtomicCache::store($driver)->tags(['products'])->get($key));
+
+        // Invalidate via clearTags
+        AtomicCache::store($driver)->clearTags(['products']);
+        $this->assertNull(AtomicCache::store($driver)->tags(['products'])->get($key));
+
+        // Storing new item under same tag works with new version
+        AtomicCache::store($driver)->tags(['products'])->put($key, 'second_version', 60);
+        $this->assertEquals('second_version', AtomicCache::store($driver)->tags(['products'])->get($key));
+    }
+
+    public function test_benchmark_command_handles_zero_iterations_gracefully(): void
+    {
+        $exitCode = \Illuminate\Support\Facades\Artisan::call('atomic-cache:bench', [
+            '--driver' => 'array',
+            '--iterations' => 0,
+        ]);
+
+        $this->assertEquals(0, $exitCode);
+    }
+
+    public function test_clear_command_with_force_and_all_clears_store(): void
+    {
+        AtomicCache::put('persist_key', 'value', 60);
+        $this->assertEquals('value', AtomicCache::get('persist_key'));
+
+        $exitCode = \Illuminate\Support\Facades\Artisan::call('atomic-cache:clear', [
+            '--all' => true,
+            '--force' => true,
+        ]);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertNull(AtomicCache::get('persist_key'));
+    }
+
+    public function test_query_macro_differentiates_eager_loads_fingerprint(): void
+    {
+        TestPost::create(['title' => 'Eager Load Post']);
+
+        // 1. Query without eager loads
+        $withoutEager = TestPost::where('title', 'Eager Load Post')->atomicCache(60);
+        $this->assertFalse($withoutEager->first()->relationLoaded('comments'));
+
+        // 2. Query with eager loads (comments)
+        $withEager = TestPost::with('comments')->where('title', 'Eager Load Post')->atomicCache(60);
+        $this->assertTrue($withEager->first()->relationLoaded('comments'));
+    }
+
+    public function test_null_results_are_cached_without_cache_penetration(): void
+    {
+        $dbCallCount = 0;
+        $key = 'null_test_' . uniqid();
+
+        // 1. First call: callback returns null, gets cached
+        $result1 = AtomicCache::remember($key, 60, function () use (&$dbCallCount) {
+            $dbCallCount++;
+            return null;
+        });
+
+        $this->assertNull($result1);
+        $this->assertEquals(1, $dbCallCount);
+
+        // 2. Second call: should retrieve null directly from cache without hitting callback
+        $result2 = AtomicCache::remember($key, 60, function () use (&$dbCallCount) {
+            $dbCallCount++;
+            return null;
+        });
+
+        $this->assertNull($result2);
+        $this->assertEquals(1, $dbCallCount, 'Callback should NOT be called a second time when null was cached');
+    }
+
+    public function test_joined_tables_are_auto_tagged_and_invalidated(): void
+    {
+        TestPost::create(['title' => 'Join Post 1']);
+
+        $posts = \Illuminate\Support\Facades\DB::table('test_posts')
+            ->join('test_posts as p2', 'test_posts.id', '=', 'p2.id')
+            ->select('test_posts.*')
+            ->atomicCache(60);
+
+        $this->assertCount(1, $posts);
+
+        // Clearing tag 'test_posts' clears the joined cache
+        AtomicCache::clearTags(['test_posts']);
+
+        // Verify cache is cleared
+        TestPost::create(['title' => 'Join Post 2']);
+        $newPosts = \Illuminate\Support\Facades\DB::table('test_posts')
+            ->join('test_posts as p2', 'test_posts.id', '=', 'p2.id')
+            ->select('test_posts.*')
+            ->atomicCache(60);
+
+        $this->assertCount(2, $newPosts);
     }
 }
 

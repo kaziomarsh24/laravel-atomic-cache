@@ -71,6 +71,7 @@ class BenchmarkCommand extends Command
         $coldTimeMs = round((microtime(true) - $start) * 1000, 2);
 
         // 2. Warm cache hits
+        $iterations = max(1, $iterations);
         $warmTimes = [];
         for ($i = 0; $i < $iterations; $i++) {
             $start = microtime(true);
@@ -110,10 +111,13 @@ class BenchmarkCommand extends Command
 
         // Fetch stored raw payload directly from underlying repository
         $store = AtomicCache::store($driver)->getRawStore();
-        $storedPayload = $store->get("atomic:{$key}");
-        $compressedBytes = is_array($storedPayload) && !empty($storedPayload['data'])
-            ? strlen($storedPayload['data'])
-            : strlen(serialize($storedPayload));
+        $prefix = config('atomic-cache.prefix', 'atomic');
+        $fullKey = !empty($prefix) ? "{$prefix}:{$key}" : $key;
+        $storedPayload = $store->get($fullKey);
+        $dataToMeasure = (is_array($storedPayload) && isset($storedPayload['data']))
+            ? (is_string($storedPayload['data']) ? $storedPayload['data'] : serialize($storedPayload['data']))
+            : serialize($storedPayload);
+        $compressedBytes = strlen($dataToMeasure);
 
         $savedPercent = round((($rawBytes - $compressedBytes) / $rawBytes) * 100, 1);
 

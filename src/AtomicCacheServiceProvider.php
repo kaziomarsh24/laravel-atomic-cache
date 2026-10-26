@@ -77,13 +77,26 @@ class AtomicCacheServiceProvider extends ServiceProvider
             } else {
                 $sql = $this->toSql();
                 $bindings = $this->getBindings();
-                $fingerprint = md5($sql . ':' . serialize($bindings));
+                $eagerLoads = $isEloquent && method_exists($this, 'getEagerLoads') ? array_keys($this->getEagerLoads()) : [];
+                sort($eagerLoads);
+                $fingerprint = md5($sql . ':' . serialize($bindings) . ':' . ($modelClass ?? '') . ':' . implode(',', $eagerLoads));
                 $cacheKey = "{$table}:query:{$fingerprint}";
             }
 
             $autoTags = [$table];
             if ($modelClass) {
                 $autoTags[] = $modelClass;
+            }
+
+            // Also auto-tag any joined tables for joined query invalidation
+            $joins = $isEloquent ? ($this->getQuery()->joins ?? []) : ($this->joins ?? []);
+            if (is_array($joins)) {
+                foreach ($joins as $join) {
+                    if (isset($join->table) && is_string($join->table)) {
+                        $joinTable = preg_split('/\s+as\s+|\s+/i', trim($join->table))[0];
+                        $autoTags[] = $joinTable;
+                    }
+                }
             }
             $allTags = array_merge($autoTags, $tags);
 
@@ -121,13 +134,26 @@ class AtomicCacheServiceProvider extends ServiceProvider
             } else {
                 $sql = $this->toSql();
                 $bindings = $this->getBindings();
-                $fingerprint = md5($sql . ':' . serialize($bindings));
+                $eagerLoads = $isEloquent && method_exists($this, 'getEagerLoads') ? array_keys($this->getEagerLoads()) : [];
+                sort($eagerLoads);
+                $fingerprint = md5($sql . ':' . serialize($bindings) . ':' . ($modelClass ?? '') . ':' . implode(',', $eagerLoads));
                 $cacheKey = "{$table}:query:first:{$fingerprint}";
             }
 
             $autoTags = [$table];
             if ($modelClass) {
                 $autoTags[] = $modelClass;
+            }
+
+            // Also auto-tag any joined tables for joined query invalidation
+            $joins = $isEloquent ? ($this->getQuery()->joins ?? []) : ($this->joins ?? []);
+            if (is_array($joins)) {
+                foreach ($joins as $join) {
+                    if (isset($join->table) && is_string($join->table)) {
+                        $joinTable = preg_split('/\s+as\s+|\s+/i', trim($join->table))[0];
+                        $autoTags[] = $joinTable;
+                    }
+                }
             }
             $allTags = array_merge($autoTags, $tags);
 
