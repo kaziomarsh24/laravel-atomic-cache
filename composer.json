@@ -22,13 +22,16 @@
         }
     ],
     "require": {
-        "php": "^8.2 || ^8.3 || ^8.4 || ^8.5 || ^8.6",
+        "php": "^8.2",
         "illuminate/support": "^10.0 || ^11.0 || ^12.0 || ^13.0",
         "illuminate/cache": "^10.0 || ^11.0 || ^12.0 || ^13.0",
-        "illuminate/database": "^10.0 || ^11.0 || ^12.0 || ^13.0"
+        "illuminate/database": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/contracts": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/console": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^10.0 || ^11.0 || ^12.0 || ^13.0"
     },
     "require-dev": {
-        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0",
+        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0 || ^11.0",
         "phpunit/phpunit": "^10.0 || ^11.0"
     },
     "suggest": {
@@ -57,7 +60,7 @@
             }
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true,
     "scripts": {
         "test": "vendor/bin/phpunit"

@@ -56,6 +56,12 @@ class AtomicCacheTest extends TestCase
             $table->softDeletes();
             $table->timestamps();
         });
+
+        Schema::create('test_categories', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
     }
 
     public function test_can_put_and_get_cached_value(): void
@@ -720,8 +726,9 @@ class AtomicCacheTest extends TestCase
 
     public function test_for_user_supports_uuid_and_string_ids_without_data_leakage(): void
     {
-        $userA = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
-        $userB = '8a0ceb3c-2a6c-4c9e-8bcc-1a0c6a2cba5c';
+        // Both string identifiers cast to (int) 0, proving string uniqueness is preserved
+        $userA = 'alpha-user-uuid-001';
+        $userB = 'beta-user-uuid-002';
 
         AtomicCache::forUser($userA)->put('cart', ['items' => ['MacBook Pro']], 60);
         AtomicCache::forUser($userB)->put('cart', ['items' => ['iPhone 16']], 60);
@@ -753,7 +760,8 @@ class AtomicCacheTest extends TestCase
 
     public function test_virtual_tag_invalidation_uses_uuid_tokens_and_prevents_stale_resurrection(): void
     {
-        $driver = 'array';
+        // File driver does not support native tags, forcing the Virtual Tag Engine to run
+        $driver = 'file';
         $key = 'vt_test_item_' . uniqid();
 
         AtomicCache::store($driver)->tags(['products'])->put($key, 'original_version', 60);
@@ -831,26 +839,51 @@ class AtomicCacheTest extends TestCase
 
     public function test_joined_tables_are_auto_tagged_and_invalidated(): void
     {
-        TestPost::create(['title' => 'Join Post 1']);
+        \Illuminate\Support\Facades\DB::table('test_categories')->insert([
+            'id' => 1,
+            'name' => 'Technology',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('test_posts')->insert([
+            'id' => 1,
+            'title' => 'Join Post 1',
+            'stock' => 10,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
-        $posts = \Illuminate\Support\Facades\DB::table('test_posts')
-            ->join('test_posts as p2', 'test_posts.id', '=', 'p2.id')
-            ->select('test_posts.*')
+        $query = fn() => \Illuminate\Support\Facades\DB::table('test_posts')
+            ->join('test_categories', 'test_posts.id', '=', 'test_categories.id')
+            ->select('test_posts.*', 'test_categories.name as category_name')
             ->atomicCache(60);
 
+        $posts = $query();
         $this->assertCount(1, $posts);
 
-        // Clearing tag 'test_posts' clears the joined cache
-        AtomicCache::clearTags(['test_posts']);
+        // Insert records via direct DB insert so Eloquent AutoClearsCache does not fire yet
+        \Illuminate\Support\Facades\DB::table('test_categories')->insert([
+            'id' => 2,
+            'name' => 'Science',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('test_posts')->insert([
+            'id' => 2,
+            'title' => 'Join Post 2',
+            'stock' => 10,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
-        // Verify cache is cleared
-        TestPost::create(['title' => 'Join Post 2']);
-        $newPosts = \Illuminate\Support\Facades\DB::table('test_posts')
-            ->join('test_posts as p2', 'test_posts.id', '=', 'p2.id')
-            ->select('test_posts.*')
-            ->atomicCache(60);
+        $stillCached = $query();
+        $this->assertCount(1, $stillCached);
 
-        $this->assertCount(2, $newPosts);
+        // Clearing ONLY tag 'test_categories' (the joined secondary table) must bust the query cache!
+        AtomicCache::clearTags(['test_categories']);
+
+        $fresh = $query();
+        $this->assertCount(2, $fresh);
     }
 
     public function test_model_decrement_automatically_clears_cache_via_updated_event(): void
@@ -879,16 +912,13 @@ class AtomicCacheTest extends TestCase
             }
         };
 
-        $val1 = 10;
-        $val2 = 20;
-
-        $c1 = function () use ($val1) {
-            return "val_{$val1}";
+        // Create closures from the EXACT SAME source line to ensure reflection line/file are identical
+        $factory = function ($val) {
+            return function () use ($val) { return "val_{$val}"; };
         };
 
-        $c2 = function () use ($val2) {
-            return "val_{$val2}";
-        };
+        $c1 = $factory(10);
+        $c2 = $factory(20);
 
         $res1 = $service->runWithClosure($c1);
         $res2 = $service->runWithClosure($c2);
@@ -908,6 +938,32 @@ class AtomicCacheTest extends TestCase
         // Reset should unwind buffer safely
         AtomicCacheBladeHelper::reset();
         $this->assertEquals($initialLevel, ob_get_level());
+    }
+
+    public function test_blade_helper_reset_does_not_unwind_outer_laravel_response_buffers(): void
+    {
+        ob_start();
+        $outerLevel = ob_get_level();
+
+        AtomicCacheBladeHelper::setUp('nested_key_' . uniqid(), 60);
+        $this->assertEquals($outerLevel + 1, ob_get_level());
+
+        // Reset should unwind only the helper's buffer, never the outer buffer
+        AtomicCacheBladeHelper::reset();
+        $this->assertEquals($outerLevel, ob_get_level());
+
+        ob_end_clean();
+    }
+
+    public function test_remember_with_lock_supports_named_ttl_argument_and_positional(): void
+    {
+        // 1. Positional with lock parameters
+        $res1 = AtomicCache::rememberWithLock('test_named_pos', 60, fn() => 'pos_val', lockSeconds: 5, waitSeconds: 2);
+        $this->assertEquals('pos_val', $res1);
+
+        // 2. Named arguments (ttl & callback & lockSeconds)
+        $res2 = AtomicCache::rememberWithLock('test_named_kw', ttl: 60, callback: fn() => 'kw_val', lockSeconds: 5);
+        $this->assertEquals('kw_val', $res2);
     }
 
     public function test_redis_store_chunking_and_tag_invalidation(): void

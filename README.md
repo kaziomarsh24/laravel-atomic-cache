@@ -3,7 +3,7 @@
 [![Run Tests](https://github.com/kaziomarsh24/laravel-atomic-cache/actions/workflows/run-tests.yml/badge.svg)](https://github.com/kaziomarsh24/laravel-atomic-cache/actions)
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/thekaziomar/laravel-atomic-cache.svg?style=flat-square)](https://packagist.org/packages/thekaziomar/laravel-atomic-cache)
 [![Total Downloads](https://img.shields.io/packagist/dt/thekaziomar/laravel-atomic-cache.svg?style=flat-square)](https://packagist.org/packages/thekaziomar/laravel-atomic-cache)
-[![PHP Version](https://img.shields.io/badge/PHP-8.2%20to%208.6-777BB4.svg?style=flat-square)](https://php.net)
+[![PHP Version](https://img.shields.io/badge/PHP-8.2%20to%208.5-777BB4.svg?style=flat-square)](https://php.net)
 [![License](https://img.shields.io/packagist/l/thekaziomar/laravel-atomic-cache.svg?style=flat-square)](https://packagist.org/packages/thekaziomar/laravel-atomic-cache)
 
 > ### 💡 Hate cache invalidation bugs? Tired of managing cache keys?
@@ -68,14 +68,14 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 | Feature | Standard Laravel Cache | Laravel Atomic Cache |
 | :--- | :--- | :--- |
 | **Stampede Protection** | ❌ All concurrent requests hit DB | ✅ **Atomic Lock** (1 worker computes, others wait & read) |
-| **Large Payload Size** | ❌ Raw uncompressed serialization | ✅ **Auto Gzip** (>50KB cuts Redis RAM by ~90%) |
+| **Large Payload Size** | ❌ Raw uncompressed serialization | ✅ **Auto Gzip** (>50KB cuts Redis RAM by 70–80%) |
 | **Mega Datasets** | ❌ Fails on 1MB Memcached / Redis freeze | ✅ **Transparent Chunking** (splits safely, preserves keys) |
 | **Redundant Writes** | ❌ Every put hits storage/network | ✅ **Write Deduplication** (skips unchanged payloads) |
 | **Driver Tag Support** | ❌ Crashes on File/Database stores | ✅ **Virtual Tagging** (works across all stores without Redis) |
 | **Corrupted Data** | ❌ Throws crash exception to user | ✅ **Self-Healing** (cleans key, regenerates silently) |
 | **Simultaneous Expiry** | ❌ All keys expire in same second | ✅ **TTL Jitter** (random variance prevents herd spikes) |
 | **Model Invalidation** | ⚠️ Fragile observers before commit | ✅ **DB::afterCommit** (prevents transaction race conditions) |
-| **Pagination Caching** | ⚠️ Page 1 and 2 collide unless manual | ✅ **Auto Query Hash** (page/filter automatically isolated) |
+| **Query & Filter Caching** | ⚠️ Manual key hashing required | ✅ **Zero-Key Macros & Service Isolation** (automatic hashing & tagging) |
 | **Diagnostics & Audit** | ❌ DIY logging | ✅ **Artisan Benchmark CLI** (`atomic-cache:bench`) |
 
 ---
@@ -92,7 +92,7 @@ Caching is not suitable for every workload. To maintain system reliability, avoi
 
 ## ⚙️ Requirements
 
-- **PHP:** `8.2`, `8.3`, `8.4`, `8.5`, or `8.6`
+- **PHP:** `8.2`, `8.3`, `8.4`, or `8.5`
 - **Laravel Framework:** `10.x`, `11.x`, `12.x`, or `13.x`
 - **PHP Extensions:** `ext-zlib` (optional for compression, built-in on 99% of PHP installs)
 
@@ -194,9 +194,9 @@ During sudden traffic surges (e.g. after a cache flush or key expiry), hundreds 
 `rememberWithLock` acquires an atomic distributed lock. **Only one process executes the query**, while concurrent requests wait up to 5 seconds and read the freshly cached result:
 
 ```php
-$analytics = AtomicCache::rememberWithLock('dashboard.stats', function () {
+$analytics = AtomicCache::rememberWithLock('dashboard.stats', 3600, function () {
     return HeavyAnalyticsService::calculate();
-}, ttl: 3600, lockSeconds: 10, waitSeconds: 5);
+}, lockSeconds: 10, waitSeconds: 5);
 ```
 
 ---
@@ -378,9 +378,15 @@ php artisan atomic-cache:bench --format=json
 # Clear a specific cache tag or key
 php artisan atomic-cache:clear users
 
-# Clear all atomic cache entries
+# Clear all atomic cache entries (prompts for confirmation in production)
 php artisan atomic-cache:clear --all
+
+# Clear all atomic cache entries non-interactively (e.g. in CI or deployment scripts)
+php artisan atomic-cache:clear --all --force
 ```
+
+> [!WARNING]
+> `--all` executes `flush()` on the configured cache store. If your cache store is shared with sessions or queue jobs, invalidate specific tags (e.g. `users`, `products`) to avoid clearing unrelated application data.
 
 ---
 
@@ -472,7 +478,7 @@ Target Path: /var/www/html/app/Models
 | • Exempt (Telemetry / Ephemeral): 16                                    |
 | • Recommended: 5                                                        |
 |                                                                         |
-| Architecture Health Score: 87% (Optimal Balance)                        |
+| Architecture Health Score: 87% (Good)                        |
 +-------------------------------------------------------------------------+
 ```
 
@@ -612,8 +618,8 @@ class ShopController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. Automatically isolates page 1, page 2, and filter queries (?page=2&sort=price)
-        // 2. Automatically strips marketing ad tags (?fbclid, utm_*) so 10,000 FB visitors share the same cache!
+        // Zero-Key Query Caching: auto-generates sha256 hash from compiled SQL + bindings
+        // Automatically tags with 'products' and Product::class for instantaneous invalidation on DB commit
         $catalog = Product::where('status', 'active')
             ->orderBy('created_at', 'desc')
             ->atomicCache(3600);
@@ -665,9 +671,9 @@ use KaziOmar\AtomicCache\Facades\AtomicCache;
 
 // During sudden flash sale traffic surges, only 1 worker computes this heavy query,
 // while 5,000 concurrent shoppers wait a fraction of a second and read the cached response:
-$flashSaleStats = AtomicCache::rememberWithLock('flash_sale_stats', function () {
+$flashSaleStats = AtomicCache::rememberWithLock('flash_sale_stats', 1800, function () {
     return HeavyReportingService::calculateDiscountMargins();
-}, ttl: 1800, lockSeconds: 10, waitSeconds: 5);
+}, lockSeconds: 10, waitSeconds: 5);
 ```
 
 ---

@@ -20,13 +20,15 @@ class AtomicCacheBladeHelper
             return false;
         }
 
+        ob_start();
+
         static::$stack[] = [
             'key' => $key,
             'ttl' => $ttl,
             'tags' => $tags,
+            'level' => ob_get_level(),
         ];
 
-        ob_start();
         return true;
     }
 
@@ -52,13 +54,15 @@ class AtomicCacheBladeHelper
     }
 
     /**
-     * Reset and unwind all unclosed buffers and stack (safe for exception recovery and Octane).
+     * Reset and unwind unclosed buffers down to safe level (safe for exception recovery and Octane).
+     * Ensures outer Laravel response output buffers are never accidentally closed.
      */
     public static function reset(): void
     {
         while (!empty(static::$stack)) {
-            array_pop(static::$stack);
-            if (ob_get_level() > 0) {
+            $context = array_pop(static::$stack);
+            $targetLevel = max(0, ($context['level'] ?? 1) - 1);
+            while (ob_get_level() > $targetLevel) {
                 ob_end_clean();
             }
         }

@@ -94,47 +94,61 @@ class AtomicCache
 
     /**
      * Normalize arguments for remember method.
-     * Supports both (key, ttl, callback) and (key, callback, ttl).
+     * Supports both (key, ttl, callback) and (key, callback, ttl), as well as named arguments (ttl: ..., callback: ...).
      */
-    protected function normalizeRememberArgs(mixed $arg2, mixed $arg3): array
-    {
+    protected function normalizeRememberArgs(
+        mixed $arg2 = null,
+        mixed $arg3 = null,
+        ?int $ttl = null,
+        ?\Closure $callback = null
+    ): array {
+        if ($callback !== null) {
+            $arg2 = $arg2 ?? $callback;
+        }
+        if ($ttl !== null) {
+            $arg3 = $arg3 ?? $ttl;
+        }
+
         if ($arg2 instanceof Closure) {
-            $callback = $arg2;
-            $ttl = is_int($arg3) ? $arg3 : null;
+            $resolvedCallback = $arg2;
+            $resolvedTtl = is_int($arg3) ? $arg3 : ($ttl ?? null);
         } elseif ($arg3 instanceof Closure) {
-            $callback = $arg3;
-            $ttl = is_int($arg2) ? $arg2 : null;
+            $resolvedCallback = $arg3;
+            $resolvedTtl = is_int($arg2) ? $arg2 : ($ttl ?? null);
         } else {
             throw new \InvalidArgumentException("[AtomicCache] remember requires a Closure callback.");
         }
 
-        return [$callback, $ttl];
+        return [$resolvedCallback, $resolvedTtl];
     }
 
     /**
      * Get or compute a cached value.
-     * Supports both:
+     * Supports:
      * - remember($key, 3600, fn() => ...)
      * - remember($key, fn() => ..., 3600)
+     * - remember($key, ttl: 3600, callback: fn() => ...)
      */
     public function remember(
         string $key,
-        mixed $ttlOrCallback,
+        mixed $ttlOrCallback = null,
         mixed $callbackOrTtl = null,
         array $tags = [],
-        bool $lock = false
+        bool $lock = false,
+        ?int $ttl = null,
+        ?\Closure $callback = null
     ): mixed {
-        [$callback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl);
+        [$resolvedCallback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl, $ttl, $callback);
 
         if (!config('atomic-cache.enabled', true)) {
-            return $callback();
+            return $resolvedCallback();
         }
 
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $shouldLock = $this->useLock || $lock || config('atomic-cache.stampede.enabled', false);
 
         if ($shouldLock) {
-            return $this->rememberWithLockInternal($key, $callback, $customTtl, $tags);
+            return $this->rememberWithLockInternal($key, $resolvedCallback, $customTtl, $tags);
         }
 
         $sentinel = new \stdClass();
@@ -143,7 +157,7 @@ class AtomicCache
             return $cached;
         }
 
-        $value = $callback();
+        $value = $resolvedCallback();
         $this->put($key, $value, $customTtl, $tags);
 
         return $value;
@@ -154,16 +168,18 @@ class AtomicCache
      */
     public function rememberWithLock(
         string $key,
-        mixed $ttlOrCallback,
+        mixed $ttlOrCallback = null,
         mixed $callbackOrTtl = null,
         array $tags = [],
         ?int $lockSeconds = null,
-        ?int $waitSeconds = null
+        ?int $waitSeconds = null,
+        ?int $ttl = null,
+        ?\Closure $callback = null
     ): mixed {
-        [$callback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl);
+        [$resolvedCallback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl, $ttl, $callback);
 
         return $this->withLock($lockSeconds, $waitSeconds)
-            ->remember($key, $callback, $customTtl, $tags, true);
+            ->remember($key, $resolvedCallback, $customTtl, $tags, true);
     }
 
     /**
@@ -171,15 +187,17 @@ class AtomicCache
      */
     public function rememberForUser(
         string $key,
-        mixed $ttlOrCallback,
+        mixed $ttlOrCallback = null,
         mixed $callbackOrTtl = null,
         int|string|null $userId = null,
-        array $tags = []
+        array $tags = [],
+        ?int $ttl = null,
+        ?\Closure $callback = null
     ): mixed {
-        [$callback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl);
+        [$resolvedCallback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl, $ttl, $callback);
 
         return $this->forUser($userId)
-            ->remember($key, $callback, $customTtl, $tags);
+            ->remember($key, $resolvedCallback, $customTtl, $tags);
     }
 
     /**
