@@ -828,9 +828,9 @@ AtomicCache::clearTags([Product::class, 42]);</code></pre>
                 </p>
 
                 <ol class="list-decimal pl-5 space-y-2 text-sm text-slate-700 dark:text-zinc-300 mb-4">
-                    <li>Each tag maintains an integer version key in the store: <code>atomic:__tag_v__:{tag}</code>.</li>
-                    <li>Keys incorporate a hash of their tag versions: <code>{key}:vt:md5(sorted_versions)</code>.</li>
-                    <li>Calling <code>AtomicCache::clearTags(['products'])</code> increments the version counter from <code>1</code> to <code>2</code>.</li>
+                    <li>Each tag maintains a unique version token in the store: <code>atomic:__tag_v__:{tag}</code>.</li>
+                    <li>Keys incorporate an MD5 hash of their sorted tag tokens: <code>{key}:vt:md5(sorted_tokens)</code>.</li>
+                    <li>Calling <code>AtomicCache::clearTags(['products'])</code> rotates the tag to a fresh UUID token.</li>
                     <li>Existing cached entries become instant cache misses in 0 milliseconds, with zero files deleted or slow SQL queries.</li>
                 </ol>
             </section>
