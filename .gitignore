@@ -5,3 +5,4 @@ composer.lock
 phpunit.xml
 .env
 .DS_Store
+/storage

@@ -13,6 +13,7 @@ use KaziOmar\AtomicCache\Concerns\ManagesChunking;
 use KaziOmar\AtomicCache\Concerns\ManagesCompression;
 use KaziOmar\AtomicCache\Concerns\ManagesLocks;
 use KaziOmar\AtomicCache\Concerns\ManagesVirtualTags;
+use KaziOmar\AtomicCache\Exceptions\ChunkRestorationException;
 use Throwable;
 
 class AtomicCache
@@ -120,8 +121,41 @@ class AtomicCache
     }
 
     /**
+     * Resolve callback and TTL from any permutation of positional or named arguments.
+     * Supports:
+     * - ($ttl, $callback)
+     * - ($callback, $ttl)
+     * - ($ttl, callback: $callback)
+     * - (ttl: $ttl, callback: $callback)
+     * - (callback: $callback, ttl: $ttl)
+     */
+    public static function resolveRememberArguments(
+        mixed $arg2 = null,
+        mixed $arg3 = null,
+        mixed $ttl = null,
+        ?Closure $callback = null
+    ): array {
+        $candidates = [$arg2, $arg3, $callback, $ttl];
+        $resolvedCallback = null;
+        $resolvedTtl = null;
+
+        foreach ($candidates as $candidate) {
+            if ($candidate instanceof Closure && $resolvedCallback === null) {
+                $resolvedCallback = $candidate;
+            } elseif ($candidate !== null && !($candidate instanceof Closure) && $resolvedTtl === null) {
+                $resolvedTtl = static::parseTtlSeconds($candidate);
+            }
+        }
+
+        if ($resolvedCallback === null) {
+            throw new \InvalidArgumentException("[AtomicCache] remember requires a Closure callback.");
+        }
+
+        return [$resolvedCallback, $resolvedTtl];
+    }
+
+    /**
      * Normalize arguments for remember method.
-     * Supports both (key, ttl, callback) and (key, callback, ttl), as well as named arguments (ttl: ..., callback: ...).
      */
     protected function normalizeRememberArgs(
         mixed $arg2 = null,
@@ -129,24 +163,7 @@ class AtomicCache
         mixed $ttl = null,
         ?Closure $callback = null
     ): array {
-        if ($callback !== null) {
-            $arg2 = $arg2 ?? $callback;
-        }
-        if ($ttl !== null) {
-            $arg3 = $arg3 ?? $ttl;
-        }
-
-        if ($arg2 instanceof Closure) {
-            $resolvedCallback = $arg2;
-            $resolvedTtl = static::parseTtlSeconds($arg3) ?? static::parseTtlSeconds($ttl);
-        } elseif ($arg3 instanceof Closure) {
-            $resolvedCallback = $arg3;
-            $resolvedTtl = static::parseTtlSeconds($arg2) ?? static::parseTtlSeconds($ttl);
-        } else {
-            throw new \InvalidArgumentException("[AtomicCache] remember requires a Closure callback.");
-        }
-
-        return [$resolvedCallback, $resolvedTtl];
+        return static::resolveRememberArguments($arg2, $arg3, $ttl, $callback);
     }
 
     /**
@@ -300,8 +317,10 @@ class AtomicCache
                 return $success;
             }
 
-            // If not chunked, purge any previous chunked payload for this key
-            $this->cleanExistingChunks($effectiveKey, $repository);
+            // Only clean old chunks on non-chunked put if chunking is enabled and clean_on_put is opted-in
+            if (config('atomic-cache.chunking.enabled', true) && config('atomic-cache.chunking.clean_on_put', false)) {
+                $this->cleanExistingChunks($effectiveKey, $repository);
+            }
 
             // 3. Normal / Compressed Storage
             $packed = $this->packPayload($value);
@@ -496,6 +515,22 @@ class AtomicCache
         if (config('atomic-cache.self_healing.enabled', true)) {
             try {
                 $repository = $this->getRepository($tags);
+
+                // If a chunk read failed, check if the manifest has moved to a newer generation.
+                // If so, do NOT purge the active cache key or newer generation chunks!
+                if ($exception instanceof ChunkRestorationException) {
+                    $failedGeneration = $exception->getGeneration();
+                    if ($failedGeneration !== null) {
+                        $currentManifest = $repository->get($key);
+                        $currentGeneration = is_array($currentManifest) ? ($currentManifest['generation'] ?? null) : null;
+
+                        if ($currentGeneration !== null && $currentGeneration !== $failedGeneration) {
+                            Log::info("[AtomicCache] Superseded generation '{$failedGeneration}' chunk missing for key '{$key}'; active generation '{$currentGeneration}' preserved.");
+                            return value($default);
+                        }
+                    }
+                }
+
                 $this->cleanExistingChunks($key, $repository);
                 $repository->forget("{$key}:__dna__");
                 $repository->forget($key);

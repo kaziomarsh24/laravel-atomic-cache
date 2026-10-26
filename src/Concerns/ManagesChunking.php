@@ -5,6 +5,7 @@ namespace KaziOmar\AtomicCache\Concerns;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use KaziOmar\AtomicCache\Exceptions\ChunkRestorationException;
 use Throwable;
 
 trait ManagesChunking
@@ -144,12 +145,18 @@ trait ManagesChunking
             $chunkRaw = $fetchedChunks[$chunkKey] ?? null;
 
             if ($chunkRaw === null) {
-                throw new \RuntimeException("Missing chunk {$i} of {$chunksCount} for key '{$key}'");
+                throw new ChunkRestorationException(
+                    "Missing chunk {$i} of {$chunksCount} for key '{$key}' (generation: " . ($generation ?? 'none') . ")",
+                    $generation
+                );
             }
 
             $chunkData = $this->unpackPayload($chunkRaw, $chunkKey, $tags, $repository);
             if (!is_array($chunkData)) {
-                throw new \RuntimeException("Invalid chunk payload for key '{$key}'");
+                throw new ChunkRestorationException(
+                    "Invalid chunk payload for key '{$key}' (generation: " . ($generation ?? 'none') . ")",
+                    $generation
+                );
             }
 
             // Preserve associative keys and sparse numeric keys

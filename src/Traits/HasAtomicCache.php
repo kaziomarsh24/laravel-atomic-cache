@@ -53,6 +53,9 @@ trait HasAtomicCache
 
         // Include sanitized HTTP query parameters (e.g. ?page=2&filter=active) while excluding marketing tracking tags (utm_*, fbclid)
         if ($this->shouldIncludeRequestQuery()) {
+            if ($this->isAbnormalRequestQuery()) {
+                return $callback(); // Bypass cache for abnormal/attack queries to prevent DoS without collisions
+            }
             $sanitizedQuery = $this->getSanitizedRequestQuery();
             if (!empty($sanitizedQuery)) {
                 $safeArgs['__query__'] = $sanitizedQuery;
@@ -82,28 +85,30 @@ trait HasAtomicCache
 
     /**
      * Cache using intuitive Laravel method signature: remember($key, $ttl, $callback).
-     * Supports both:
+     * Supports both positional and named argument permutations:
      * - remember($key, 3600, fn() => ...)
      * - remember($key, fn() => ..., 3600)
+     * - remember($key, now()->addDay(), fn() => ...)
+     * - remember($key, 3600, callback: fn() => ...)
+     * - remember($key, callback: fn() => ..., ttl: 3600)
      */
     public function remember(
         string $key,
-        mixed $ttlOrCallback,
+        mixed $ttlOrCallback = null,
         mixed $callbackOrTtl = null,
         array $tags = [],
-        bool $lock = false
+        bool $lock = false,
+        mixed $ttl = null,
+        ?Closure $callback = null
     ): mixed {
-        if ($ttlOrCallback instanceof Closure) {
-            $callback = $ttlOrCallback;
-            $ttl = is_int($callbackOrTtl) ? $callbackOrTtl : null;
-        } elseif ($callbackOrTtl instanceof Closure) {
-            $ttl = is_int($ttlOrCallback) ? $ttlOrCallback : null;
-            $callback = $callbackOrTtl;
-        } else {
-            throw new \InvalidArgumentException("[AtomicCache] remember requires a Closure callback.");
-        }
+        [$resolvedCallback, $resolvedTtl] = AtomicCache::resolveRememberArguments(
+            $ttlOrCallback,
+            $callbackOrTtl,
+            $ttl,
+            $callback
+        );
 
-        return $this->rememberCache($key, $callback, $ttl, $tags, $lock);
+        return $this->rememberCache($key, $resolvedCallback, $resolvedTtl, $tags, $lock);
     }
 
     /**
@@ -112,7 +117,7 @@ trait HasAtomicCache
     public function rememberCache(
         string $key,
         Closure $callback,
-        ?int $ttl = null,
+        mixed $ttl = null,
         array $tags = [],
         bool $lock = false
     ): mixed {
@@ -186,6 +191,9 @@ trait HasAtomicCache
         $safeArgs = $this->normalizeArguments($extraArgs);
 
         if ($this->shouldIncludeRequestQuery()) {
+            if ($this->isAbnormalRequestQuery()) {
+                return $callback(); // Bypass cache for abnormal/attack queries to prevent DoS without collisions
+            }
             $sanitizedQuery = $this->getSanitizedRequestQuery();
             if (!empty($sanitizedQuery)) {
                 $safeArgs['__query__'] = $sanitizedQuery;
@@ -327,23 +335,49 @@ trait HasAtomicCache
             }, ARRAY_FILTER_USE_KEY);
         }
 
-        // 3. Security Hardening: Protect against query string DoS / unbounded parameter explosion
-        // Limit max parameters to 20 and cap value strings to 255 chars to prevent memory exhaustion attacks
-        if (count($query) > 20) {
-            $query = array_slice($query, 0, 20, true);
-        }
+        // 3. Security Hardening: Protect against query string DoS without truncation collisions.
+        // Abnormal query strings (>20 params or >2048 bytes) bypass caching at caller level.
+        $this->recursiveKsort($query);
+        return $query;
+    }
 
-        $sanitized = [];
-        foreach ($query as $k => $v) {
-            if (is_string($v) && strlen($v) > 255) {
-                $sanitized[$k] = substr($v, 0, 255);
-            } else {
-                $sanitized[$k] = $v;
+    /**
+     * Recursively sort arrays by key to ensure deterministic cache key generation.
+     */
+    protected function recursiveKsort(array &$array): void
+    {
+        ksort($array);
+        foreach ($array as &$value) {
+            if (is_array($value)) {
+                $this->recursiveKsort($value);
             }
         }
+    }
 
-        ksort($sanitized);
-        return $sanitized;
+    /**
+     * Detect abnormal request query payloads (>20 params or >2048 bytes) that indicate cache pollution attacks.
+     * When detected, AtomicCache bypasses the cache entirely to protect memory without corrupting cache keys.
+     */
+    protected function isAbnormalRequestQuery(): bool
+    {
+        if (!request() || empty(request()->query())) {
+            return false;
+        }
+
+        $query = request()->query();
+        if (count($query) > (int) config('atomic-cache.query_limits.max_params', 20)) {
+            return true;
+        }
+
+        try {
+            if (strlen(serialize($query)) > (int) config('atomic-cache.query_limits.max_bytes', 2048)) {
+                return true;
+            }
+        } catch (\Throwable) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

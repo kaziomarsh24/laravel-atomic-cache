@@ -89,6 +89,7 @@ return [
         'enabled' => env('ATOMIC_CACHE_CHUNKING_ENABLED', true),
         'threshold' => env('ATOMIC_CACHE_CHUNKING_THRESHOLD', 1000), // minimum items to trigger chunking
         'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000), // items per chunk
+        'clean_on_put' => env('ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT', false), // purge prior chunks on non-chunked put
     ],
 
     /*
@@ -161,5 +162,19 @@ return [
         '_gl',
         '_gid',
         'ref',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | HTTP Query Limits (Cache Poisoning & DoS Protection)
+    |--------------------------------------------------------------------------
+    |
+    | Limits on request query string parameters to prevent memory exhaustion
+    | or hash collisions. Queries exceeding these limits cleanly bypass the cache.
+    |
+    */
+    'query_limits' => [
+        'max_params' => env('ATOMIC_CACHE_QUERY_MAX_PARAMS', 20),
+        'max_bytes' => env('ATOMIC_CACHE_QUERY_MAX_BYTES', 2048),
     ],
 ];
