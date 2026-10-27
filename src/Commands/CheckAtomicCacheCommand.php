@@ -446,7 +446,6 @@ class CheckAtomicCacheCommand extends Command
         foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
             if ($ref->hasProperty($prop)) {
                 $property = $ref->getProperty($prop);
-                $property->setAccessible(true);
                 // Guard: Skip uninitialized typed properties (e.g. protected array $cacheParents;)
                 if (!$property->isInitialized($instance)) {
                     continue;

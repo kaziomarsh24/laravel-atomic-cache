@@ -5,12 +5,12 @@ All notable changes to `laravel-atomic-cache` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.4.4] - Unreleased
+## [Unreleased]
 
 ### Added
-- **Class-Level In-Memory Static Cache:** Added `static::$configuredParentRelationsCache` in `AutoClearsCache` to eliminate reflection calls on repeated saves, ensuring zero-overhead parent relation lookups during high-volume batch operations.
-- **Private Property Visibility Support:** Added `$property->setAccessible(true)` in both `AutoClearsCache` and `CheckAtomicCacheCommand` so models declaring `private array $cacheParents` are cleanly read without reflection visibility exceptions.
-- **Architectural Limitations & Gotchas Documentation:** Documented query builder mass mutations (`Model::query()->update()`), pagination guidance with `atomicCache()`, write-heavy table invalidation tradeoffs, and raw SQL join recommendations across `README.md` and `docs/index.html`.
+- **Class-Level In-Memory Static Cache:** Added `static::$configuredParentRelationsCache` in `AutoClearsCache` to cache resolved parent relations per model class, eliminating property inspection overhead during repeated batch saves.
+- **Private Property Declarations Supported:** Verified and tested support for models declaring `private array $cacheParents`, ensuring private parent relation definitions are safely extracted across PHP 8.2–8.5 without requiring deprecated `setAccessible()` calls.
+- **Architectural Limitations & Gotchas Documentation:** Documented query builder mass mutations (`Model::query()->update()`), pagination guidance using `HasAtomicCache::rememberCollection()`, write-heavy table invalidation tradeoffs, and raw SQL subquery join recommendations across `README.md` and `docs/index.html`.
 
 ---
 

@@ -255,7 +255,6 @@ class SecurityAndEdgeCasesTest extends TestCase
         $instance = app(AtomicCacheInstance::class);
         $reflection = new \ReflectionClass($instance);
         $restoreMethod = $reflection->getMethod('restoreChunkedPayload');
-        $restoreMethod->setAccessible(true);
 
         try {
             $restoreMethod->invoke($instance, $manifest1, 'atomic:race_test_key', [], $store);
@@ -263,7 +262,6 @@ class SecurityAndEdgeCasesTest extends TestCase
         } catch (\Throwable $e) {
             // Reader triggers self-healing with the exception from gen1
             $healMethod = $reflection->getMethod('handleCorruptedCache');
-            $healMethod->setAccessible(true);
             $healResult = $healMethod->invoke($instance, 'atomic:race_test_key', [], $e, 'fallback');
             $this->assertEquals('fallback', $healResult);
         }

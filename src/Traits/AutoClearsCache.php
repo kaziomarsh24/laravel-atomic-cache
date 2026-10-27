@@ -216,7 +216,6 @@ trait AutoClearsCache
                 // Check property_exists and reflection isInitialized to avoid triggering Eloquent magic __isset()
                 if (property_exists($this, $prop)) {
                     $ref = new \ReflectionProperty($this, $prop);
-                    $ref->setAccessible(true);
                     if ($ref->isInitialized($this)) {
                         $val = $ref->getValue($this);
                         if (is_array($val)) {

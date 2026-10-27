@@ -122,28 +122,29 @@ The `->atomicCache()` query macro is a terminal execution that immediately execu
 // ✅ How to cache paginated results properly:
 
 // Approach A: Service/Repository Layer with HasAtomicCache (Recommended)
-// HasAtomicCache automatically incorporates request query strings & page numbers:
+// rememberCollection() automatically isolates request query strings & page numbers:
 class ProductService
 {
     use HasAtomicCache;
 
     public function getActiveProducts()
     {
-        return $this->remember(3600, fn() => Product::where('status', 'active')->paginate(15), tags: [Product::class]);
+        return $this->rememberCollection('active', fn() => Product::where('status', 'active')->paginate(15), 3600);
     }
 }
 
-// Approach B: Explicit key with AtomicCache facade
+// Approach B: Custom key with AtomicCache facade (include parameters that alter the result):
 $page = request()->get('page', 1);
+$queryHash = md5(serialize(request()->only(['page', 'per_page', 'sort', 'filter'])));
 $products = AtomicCache::tags([Product::class])
-    ->remember("products:active:page:{$page}", 3600, function () {
+    ->remember("products:active:{$queryHash}", 3600, function () {
         return Product::where('status', 'active')->paginate(15);
     });
 ```
 
 #### 3. Invalidation Granularity on Write-Heavy Tables
 `AutoClearsCache` operates on table-level invalidation tags (e.g. `products`, `orders`).
-- **Read-Heavy Tables (Recommended):** Catalogues, products, categories, settings, articles, and profiles experience high cache hit rates (95%+).
+- **Read-Heavy Tables (Recommended):** Catalogues, products, categories, settings, articles, and profiles maintain consistently high cache hit rates without frequent invalidations.
 - **Write-Heavy Tables:** Tables with continuous high-volume writes (e.g., live activity logs, high-frequency stock tickers, IoT sensor logs) will repeatedly invalidate the table tag.
 - **Best Practice:** For write-heavy tables, do not attach broad table tags. Instead, cache single records with targeted unique keys:
   ```php
@@ -152,10 +153,11 @@ $products = AtomicCache::tags([Product::class])
   ```
 
 #### 4. Raw SQL & Subqueries in Query Macros
-The `atomicCache()` macro automatically inspects standard `join()` and `leftJoin()` methods to attach join table tags. However, complex raw SQL (`joinRaw()`) or nested `whereExists()` subqueries are not dynamically parsed.
-- **Best Practice:** Pass additional table tags explicitly when using raw joins:
+The `atomicCache()` macro automatically inspects standard `join()` and `leftJoin()` methods to attach join table tags. However, raw SQL subqueries (e.g. `whereRaw()`, `whereExists()`) are not dynamically parsed into tags.
+- **Best Practice:** Pass additional table tags explicitly when using raw SQL joins or subqueries:
   ```php
-  Order::joinRaw('LEFT JOIN customers ON customers.id = orders.customer_id')
+  Order::query()
+      ->whereRaw('exists (select 1 from customers where customers.id = orders.customer_id)')
       ->atomicCache(3600, tags: ['customers']);
   ```
 

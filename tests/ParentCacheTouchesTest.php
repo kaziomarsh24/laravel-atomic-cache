@@ -706,6 +706,12 @@ class ParentCacheTouchesTest extends TestCase
     {
         TestOrderModel::flushConfiguredParentRelationsCache();
 
+        $ref = new \ReflectionClass(TestOrderModel::class);
+        $prop = $ref->getProperty('configuredParentRelationsCache');
+
+        // Verify cache is empty for TestOrderModel initially
+        $this->assertArrayNotHasKey(TestOrderModel::class, $prop->getValue());
+
         $order = new TestOrderModel();
         $order->store_id = 15;
 
@@ -713,11 +719,20 @@ class ParentCacheTouchesTest extends TestCase
         $tags1 = $order->resolveCacheTagsToClear();
         $this->assertContains('test_stores:15:test_orders', $tags1);
 
-        // 2. Second call resolves directly from in-memory cache without reflection
+        // Verify static cache was populated with the resolved relations
+        $cached = $prop->getValue();
+        $this->assertArrayHasKey(TestOrderModel::class, $cached);
+        $this->assertEquals(['store'], $cached[TestOrderModel::class]);
+
+        // 2. Second call resolves directly from in-memory cache
         $order2 = new TestOrderModel();
         $order2->store_id = 20;
         $tags2 = $order2->resolveCacheTagsToClear();
         $this->assertContains('test_stores:20:test_orders', $tags2);
+
+        // 3. Verify flushConfiguredParentRelationsCache() clears the static entry
+        TestOrderModel::flushConfiguredParentRelationsCache();
+        $this->assertArrayNotHasKey(TestOrderModel::class, $prop->getValue());
     }
 
     /**
