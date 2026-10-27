@@ -191,6 +191,11 @@ trait AutoClearsCache
     }
 
     /**
+     * In-memory class-level cache for configured parent relations to eliminate reflection overhead on repeated saves.
+     */
+    protected static array $configuredParentRelationsCache = [];
+
+    /**
      * Resolve configured parent relation names supporting all three developer conventions:
      * - $cacheParents = ['store']   (Standard package convention - Recommended)
      * - $cacheTouches = ['store']   (Laravel $touches style alias)
@@ -198,18 +203,29 @@ trait AutoClearsCache
      */
     protected function resolveConfiguredParentRelations(): array
     {
+        $class = static::class;
+
+        if (isset(static::$configuredParentRelationsCache[$class])) {
+            return static::$configuredParentRelationsCache[$class];
+        }
+
+        $relations = [];
+
         foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
             try {
                 // Check property_exists and reflection isInitialized to avoid triggering Eloquent magic __isset()
                 if (property_exists($this, $prop)) {
                     $ref = new \ReflectionProperty($this, $prop);
+                    $ref->setAccessible(true);
                     if ($ref->isInitialized($this)) {
                         $val = $ref->getValue($this);
                         if (is_array($val)) {
-                            return $val;
+                            $relations = $val;
+                            break;
                         }
                         if (is_string($val) && trim($val) !== '') {
-                            return [trim($val)];
+                            $relations = [trim($val)];
+                            break;
                         }
                     }
                 }
@@ -218,6 +234,14 @@ trait AutoClearsCache
             }
         }
 
-        return [];
+        return static::$configuredParentRelationsCache[$class] = $relations;
+    }
+
+    /**
+     * Flush in-memory configured parent relations cache (useful for testing and Octane resets).
+     */
+    public static function flushConfiguredParentRelationsCache(): void
+    {
+        static::$configuredParentRelationsCache = [];
     }
 }

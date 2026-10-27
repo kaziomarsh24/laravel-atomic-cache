@@ -183,6 +183,18 @@ class TestMultiParentModel extends Model
     }
 }
 
+class TestPrivateCacheParentsModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_orders';
+    private array $cacheParents = ['store'];
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(TestStoreModel::class, 'store_id');
+    }
+}
+
 /* -------------------------------------------------------------------------
 | Unit Test Suite for Declarative Parent Cache Invalidation
 | ------------------------------------------------------------------------- */
@@ -238,6 +250,7 @@ class ParentCacheTouchesTest extends TestCase
 
     protected function tearDown(): void
     {
+        TestOrderModel::flushConfiguredParentRelationsCache();
         Schema::dropIfExists('test_faulty_models');
         Schema::dropIfExists('test_comments');
         Schema::dropIfExists('test_items');
@@ -684,5 +697,45 @@ class ParentCacheTouchesTest extends TestCase
 
         // Parent cache must be invalidated
         $this->assertNull(AtomicCache::tags(["test_stores:{$store->id}:test_orders"])->get('items'));
+    }
+
+    /**
+     * Test 21: In-memory class-level static cache eliminates reflection overhead on subsequent calls.
+     */
+    public function test_class_level_static_cache_eliminates_subsequent_reflection_overhead(): void
+    {
+        TestOrderModel::flushConfiguredParentRelationsCache();
+
+        $order = new TestOrderModel();
+        $order->store_id = 15;
+
+        // 1. First call resolves via reflection and caches in static array
+        $tags1 = $order->resolveCacheTagsToClear();
+        $this->assertContains('test_stores:15:test_orders', $tags1);
+
+        // 2. Second call resolves directly from in-memory cache without reflection
+        $order2 = new TestOrderModel();
+        $order2->store_id = 20;
+        $tags2 = $order2->resolveCacheTagsToClear();
+        $this->assertContains('test_stores:20:test_orders', $tags2);
+    }
+
+    /**
+     * Test 22: Private $cacheParents property is safely read without throwing reflection errors.
+     */
+    public function test_private_cache_parents_property_is_safely_read(): void
+    {
+        $model = new TestPrivateCacheParentsModel();
+        $model->store_id = 99;
+
+        $tags = $model->resolveCacheTagsToClear();
+        $this->assertContains('test_stores:99:test_orders', $tags);
+        $this->assertContains('test_stores:99', $tags);
+
+        // Also verify linter can extract private property
+        $command = new \KaziOmar\AtomicCache\Commands\CheckAtomicCacheCommand();
+        $refMethod = new \ReflectionMethod($command, 'getDeclaredParentRelations');
+        $declared = $refMethod->invoke($command, $model);
+        $this->assertEquals(['store'], $declared);
     }
 }

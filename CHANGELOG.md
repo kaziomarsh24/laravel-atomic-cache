@@ -5,6 +5,14 @@ All notable changes to `laravel-atomic-cache` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.4] - Unreleased
+
+### Added
+- **Class-Level In-Memory Static Cache:** Added `static::$configuredParentRelationsCache` in `AutoClearsCache` to eliminate reflection calls on repeated saves, ensuring zero-overhead parent relation lookups during high-volume batch operations.
+- **Private Property Visibility Support:** Added `$property->setAccessible(true)` in both `AutoClearsCache` and `CheckAtomicCacheCommand` so models declaring `private array $cacheParents` are cleanly read without reflection visibility exceptions.
+
+---
+
 ## [v1.4.3] - 2026-10-27
 
 ### Fixed
