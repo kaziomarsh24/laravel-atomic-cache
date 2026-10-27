@@ -101,7 +101,7 @@
                     AC
                 </div>
                 <span>laravel-atomic-cache</span>
-                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 ml-1">v1.3</span>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 ml-1">v1.4</span>
             </a>
         </div>
 
@@ -199,6 +199,11 @@
                                 Installation & Config
                             </a>
                         </li>
+                        <li>
+                            <a href="#driver-compatibility" data-nav="driver-compatibility" class="sidebar-item block px-2.5 py-1.5 rounded-md font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                                Driver Compatibility
+                            </a>
+                        </li>
                     </ul>
                 </div>
 
@@ -265,12 +270,17 @@
                     </ul>
                 </div>
 
-                <!-- API Reference -->
+                <!-- Troubleshooting & Reference -->
                 <div class="nav-group">
                     <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-2 px-2.5">
-                        API Reference
+                        Troubleshooting & Reference
                     </div>
                     <ul class="space-y-0.5">
+                        <li>
+                            <a href="#troubleshooting" data-nav="troubleshooting" class="sidebar-item block px-2.5 py-1.5 rounded-md font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                                Troubleshooting & FAQ
+                            </a>
+                        </li>
                         <li>
                             <a href="#cheat-sheet" data-nav="cheat-sheet" class="sidebar-item block px-2.5 py-1.5 rounded-md font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
                                 API Cheat Sheet
@@ -474,7 +484,7 @@
                 </h2>
 
                 <p class="text-[15px] sm:text-base text-slate-600 dark:text-zinc-300 leading-relaxed mb-6">
-                    If you don't want to think about keys, tag names, or redis commands, follow these two steps:
+                    If you don't want to think about keys, tag names, or redis commands, follow these three steps:
                 </p>
 
                 <div class="space-y-6">
@@ -497,6 +507,15 @@
                             <pre class="p-4 text-[13.5px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// Zero keys to manage: automatically fingerprinted and tagged with 'products' table</span>
 <span class="token-variable">$products</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'status'</span>, <span class="token-string">'active'</span>)<span class="token-operator">-&gt;</span><span class="token-function">latest</span>()<span class="token-operator">-&gt;</span><span class="token-function">atomicCache</span>(<span class="token-number">3600</span>);
 <span class="token-variable">$single</span>   <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'slug'</span>, <span class="token-variable">$slug</span>)<span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-number">3600</span>);</code></pre>
+                            <button onclick="copyCode(this)" class="absolute top-2.5 right-2.5 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-800 dark:text-zinc-200 mb-2">Step 3: Run the Model Auditor</h3>
+                        <p class="text-[14px] text-slate-600 dark:text-zinc-400 mb-2">Inspect model cache readiness and automatically detect missing traits or unsafe relations:</p>
+                        <div class="relative group my-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                            <pre class="p-4 text-[13.5px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code>php artisan atomic-cache:check</code></pre>
                             <button onclick="copyCode(this)" class="absolute top-2.5 right-2.5 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
                         </div>
                     </div>
@@ -525,6 +544,81 @@
                 <div class="relative group my-3 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
                     <pre class="p-4 text-[13.5px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code>php artisan vendor:publish --tag="atomic-cache-config"</code></pre>
                     <button onclick="copyCode(this)" class="absolute top-2.5 right-2.5 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
+                </div>
+            </section>
+
+            <!-- Section: Driver Compatibility Matrix -->
+            <section id="driver-compatibility" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200/70 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">
+                    Driver Compatibility Matrix
+                </h2>
+                <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-4">
+                    AtomicCache is engineered to adapt gracefully across every Laravel cache driver without crashing your application. Non-taggable stores (such as <code>file</code> and <code>database</code>) automatically activate the version-based Virtual Tagging engine.
+                </p>
+
+                <div class="overflow-x-auto my-4 border border-slate-200 dark:border-zinc-800 rounded-lg">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 dark:bg-zinc-800/60 border-b border-slate-200 dark:border-zinc-800 text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                            <tr>
+                                <th class="p-3">Driver</th>
+                                <th class="p-3 text-center">Native Tags</th>
+                                <th class="p-3 text-center">Virtual Tagging</th>
+                                <th class="p-3 text-center">Distributed Locks</th>
+                                <th class="p-3 text-center">Chunking &amp; Compression</th>
+                                <th class="p-3">Recommended Use Case</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-zinc-800/60 text-slate-600 dark:text-zinc-300 text-xs sm:text-sm">
+                            <tr>
+                                <td class="p-3 font-semibold text-slate-900 dark:text-white">Redis</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3 text-center text-slate-400">Auto-bypassed</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Native Redis Lock</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Yes</td>
+                                <td class="p-3">Production (High Traffic &amp; Scale)</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold text-slate-900 dark:text-white">Memcached</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3 text-center text-slate-400">Auto-bypassed</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Native Memcached Lock</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Yes</td>
+                                <td class="p-3">High-Performance Dedicated Caching</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold text-slate-900 dark:text-white">File</td>
+                                <td class="p-3 text-center text-amber-500 font-semibold">No</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400 font-semibold">Yes (Version-based)</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">File Lock</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Yes</td>
+                                <td class="p-3">Local Dev, CI/CD, Single-server</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold text-slate-900 dark:text-white">Database</td>
+                                <td class="p-3 text-center text-amber-500 font-semibold">No</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400 font-semibold">Yes (Version-based)</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">DB / Cache Lock</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Yes</td>
+                                <td class="p-3">Small-to-medium Multi-server setups</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold text-slate-900 dark:text-white">DynamoDB</td>
+                                <td class="p-3 text-center text-amber-500 font-semibold">No</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400 font-semibold">Yes (Version-based)</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Cache Lock</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Yes</td>
+                                <td class="p-3">Serverless / AWS Cloud Architectures</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-semibold text-slate-900 dark:text-white">Array</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3 text-center text-slate-400">Auto-bypassed</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Memory Lock</td>
+                                <td class="p-3 text-center text-emerald-600 dark:text-emerald-400">Yes</td>
+                                <td class="p-3">Automated Unit &amp; Integration Testing</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
 
@@ -601,6 +695,10 @@
 
                 <div class="my-5 p-4 rounded-r-lg border-l-4 border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
                     <strong class="text-slate-900 dark:text-white font-semibold">Automatic Query &amp; Join Invalidation:</strong> The query macro generates deterministic fingerprints incorporating SQL, bindings, and active eager loads (<code>with()</code>). If your query joins multiple tables using standard Query Builder methods (e.g. <code>join()</code>, <code>leftJoin()</code>), AtomicCache automatically tags all joined tables so updates to any joined model safely invalidate the cached query. <em>Note:</em> Tables referenced in subqueries or raw SQL (<code>joinRaw()</code>) are not statically parsed; specify any extra tags explicitly in the <code>$tags</code> argument.
+                </div>
+
+                <div class="my-4 p-4 rounded-r-lg border-l-4 border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong class="text-amber-900 dark:text-amber-300 font-semibold">Pagination with <code>-&gt;atomicCache()</code> vs <code>HasAtomicCache</code>:</strong> Calling <code>-&gt;atomicCache()</code> immediately terminates the query and returns an Eloquent <code>Collection</code>. For paginated catalog or API endpoints, use <code>HasAtomicCache::rememberCollection()</code> in your Service layer (e.g. <code>-&gt;rememberCollection('search', fn() =&gt; Product::filter()-&gt;paginate(20))</code>). This isolates distinct pages (<code>?page=1</code>, <code>?page=2</code>) into their own cache partitions and caches the complete <code>LengthAwarePaginator</code> object.
                 </div>
             </section>
 
@@ -1019,12 +1117,12 @@ php artisan atomic-cache:check --json # For CI/CD audit pipelines</code></pre>
 
                         <div class="relative group my-3 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
                             <pre class="p-4 text-[12px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code>+--------------------+------------------------------+-------------------------+----------------------+-------------------------+
-| Metric Category    | Scenario                     | Raw / Baseline          | AtomicCache Result   | Improvement / Status    |
+| Metric Category    | Scenario                     | Raw / Simulated Baseline          | AtomicCache Result   | Improvement / Status    |
 +--------------------+------------------------------+-------------------------+----------------------+-------------------------+
-| ⚡ Latency / Speed  | Database Query vs Cache Hit  | 45.00 ms (Simulated DB) | 0.84 ms              | 53.6x Faster (⚡ Instant)|
-| 📦 Payload Size    | Large Array Gzip Compression | 95.48 KB (Raw Array)    | 4.13 KB (Gzip)       | 95.7% Memory Saved      |
-| 🧩 Safe Chunking   | Large Dataset (2,500 items)  | Single raw item         | 3 safe chunks        | Driver limits protected |
-| 🏷️ Tag Resilience  | Non-Redis Virtual Tagging    | Native Tag Support      | Zero-Crash Emulation | 100% Fallback Safe      |
+| Latency / Speed  | Database Query vs Cache Hit  | 45.00 ms (Simulated DB) | 0.84 ms              | +5360% Faster (Instant)|
+| Payload Size    | Large Array Gzip Compression | 95.48 KB (Raw Array)    | 4.13 KB (Gzip)       | 95.7% Memory Saved      |
+| Safe Chunking   | Large Dataset (2,500 items)  | Single raw item         | 3 safe chunks        | Driver limits protected |
+| Tag Resilience  | Non-Redis Virtual Tagging    | Native Tag Support      | Zero-Crash Emulation | 100% Fallback Safe      |
 +--------------------+------------------------------+-------------------------+----------------------+-------------------------+</code></pre>
                         </div>
                         <p class="text-xs text-slate-500 dark:text-zinc-500 italic mt-1.5">
@@ -1048,6 +1146,96 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
             </section>
 
             <!-- Section 16: API Cheat Sheet -->
+            <!-- Section: Troubleshooting & FAQ -->
+            <section id="troubleshooting" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200/70 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">
+                    Troubleshooting &amp; FAQ
+                </h2>
+                <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-6">
+                    Diagnose and resolve the most common caching questions, architectural gotchas, and invalidation behaviors.
+                </p>
+
+                <div class="space-y-6">
+                    <!-- Issue 1 -->
+                    <div class="p-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827]">
+                        <h3 class="text-base font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                            <span class="w-6 h-6 rounded-full bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center text-xs font-bold">1</span>
+                            The cache is not cleared after updating data
+                        </h3>
+                        <p class="text-[14px] text-slate-600 dark:text-zinc-400 leading-relaxed mb-3">
+                            AtomicCache automatically invalidates tags via Eloquent model events (<code>created</code>, <code>updated</code>, <code>deleted</code>, <code>restored</code>). If your cache remains stale, verify these 5 common causes:
+                        </p>
+                        <div class="space-y-3 text-xs sm:text-sm text-slate-700 dark:text-zinc-300">
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">A. Mass Updates via Query Builder:</strong>
+                                Direct query builder calls like <code>Product::where('status', 'active')-&gt;update(...)</code> or <code>delete()</code> bypass Eloquent model events.
+                                <br><span class="text-emerald-600 dark:text-emerald-400 font-mono mt-1 block">Fix: Call AtomicCache::clearTags([Product::class]); manually after mass updates.</span>
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">B. Silent Model Operations:</strong>
+                                Methods like <code>-&gt;saveQuietly()</code>, <code>updateQuietly()</code>, and <code>deleteQuietly()</code> suppress all events.
+                                <br><span class="text-emerald-600 dark:text-emerald-400 font-mono mt-1 block">Fix: Call -&gt;clearModelCacheOnCommit(); or flush tags explicitly.</span>
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">C. Many-to-Many / Pivot Updates:</strong>
+                                Operations like <code>-&gt;roles()-&gt;sync(...)</code>, <code>attach()</code>, or <code>detach()</code> modify pivot tables without firing parent model events.
+                                <br><span class="text-emerald-600 dark:text-emerald-400 font-mono mt-1 block">Fix: Call AtomicCache::clearTags([User::class, 'roles']); after syncing.</span>
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">D. Direct Database / Raw SQL:</strong>
+                                <code>DB::table('products')-&gt;where(...)-&gt;update(...)</code> operates outside Eloquent.
+                                <br><span class="text-emerald-600 dark:text-emerald-400 font-mono mt-1 block">Fix: Always purge tags with AtomicCache::clearTags(['products']);.</span>
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">E. Database Transaction Rollback:</strong>
+                                AtomicCache registers cache clearing via <code>afterCommit()</code>. If a transaction rolls back, cache is intentionally preserved to maintain integrity.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Issue 2 -->
+                    <div class="p-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827]">
+                        <h3 class="text-base font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                            <span class="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xs font-bold">2</span>
+                            The cache never hits (always a cache miss)
+                        </h3>
+                        <p class="text-[14px] text-slate-600 dark:text-zinc-400 leading-relaxed mb-3">
+                            If database queries are executing repeatedly despite caching macros:
+                        </p>
+                        <div class="space-y-3 text-xs sm:text-sm text-slate-700 dark:text-zinc-300">
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">A. Dynamic / Non-deterministic Query Bindings:</strong>
+                                Queries incorporating dynamic timestamps (e.g. <code>where('created_at', '&lt;=', now())</code>) generate a brand-new SQL fingerprint every second.
+                                <br><span class="text-emerald-600 dark:text-emerald-400 font-mono mt-1 block">Fix: Round timestamps to 5-minute or 1-hour boundaries: now()-&gt;startOfHour().</span>
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">B. Exceeding HTTP Query Parameter Limits (DoS Protection):</strong>
+                                In <code>HasAtomicCache</code>, requests with more than 20 query parameters or exceeding 2,048 bytes intentionally bypass caching.
+                                <br><span class="text-emerald-600 dark:text-emerald-400 font-mono mt-1 block">Fix: Customize query limits in config/atomic-cache.php: query_limits.max_params.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Issue 3 -->
+                    <div class="p-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827]">
+                        <h3 class="text-base font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                            <span class="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-bold">3</span>
+                            Common Architectural Questions
+                        </h3>
+                        <div class="space-y-3 text-xs sm:text-sm text-slate-700 dark:text-zinc-300">
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">Q: Can circular relationships in  cause infinite loops?</strong>
+                                <br>No. Parent relation resolution strictly inspects <code>BelongsTo</code> relationships and resolves foreign keys on the current model in memory. It does not re-save parent models or trigger recursive model events.
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">Q: What happens if Redis goes down?</strong>
+                                <br>AtomicCache catches store connection exceptions gracefully. If Redis becomes unavailable, execution falls back to calculating the original closure without crashing user requests, logging an alert to Laravel logs.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section id="cheat-sheet" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200/70 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">
                     API Reference Cheat Sheet
@@ -1352,6 +1540,7 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                 <li data-toc="limitations"><a href="#limitations" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">When NOT to Cache &amp; Limitations</a></li>
                 <li data-toc="quickstart"><a href="#quickstart" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">10-Second Quickstart</a></li>
                 <li data-toc="installation"><a href="#installation" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Installation</a></li>
+                <li data-toc="driver-compatibility"><a href="#driver-compatibility" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Driver Compatibility</a></li>
                 <li data-toc="query-macros"><a href="#query-macros" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">1. Product Catalog</a></li>
                 <li data-toc="flash-sale-concurrency"><a href="#flash-sale-concurrency" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">2. Flash Sales</a></li>
                 <li data-toc="user-scoped-caching"><a href="#user-scoped-caching" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">3. User Dashboard</a></li>
@@ -1361,6 +1550,7 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                 <li data-toc="engine-superpowers"><a href="#engine-superpowers" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Compression &amp; Chunking</a></li>
                 <li data-toc="virtual-tagging"><a href="#virtual-tagging" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Virtual Tagging</a></li>
                 <li data-toc="diagnostics"><a href="#diagnostics" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Doctor &amp; Benchmarks</a></li>
+                <li data-toc="troubleshooting"><a href="#troubleshooting" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Troubleshooting &amp; FAQ</a></li>
                 <li data-toc="cheat-sheet"><a href="#cheat-sheet" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">API Cheat Sheet</a></li>
                 <li data-toc="helper-function"><a href="#helper-function" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Global Helper</a></li>
                 <li data-toc="env-table"><a href="#env-table" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Environment Variables</a></li>
