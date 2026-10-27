@@ -364,7 +364,7 @@ class ParentCacheTouchesTest extends TestCase
 
         $this->assertNotEmpty($advisories);
         $this->assertEquals('store', $advisories[0]['relation']);
-        $this->assertEquals("protected array \$cacheTouches = ['store'];", $advisories[0]['suggested_code']);
+        $this->assertEquals("protected array \$cacheParents = ['store'];", $advisories[0]['suggested_code']);
         $this->assertStringContainsString('test_stores:', $advisories[0]['suggested_tag']);
     }
 }

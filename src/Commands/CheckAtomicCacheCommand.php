@@ -391,7 +391,7 @@ class CheckAtomicCacheCommand extends Command
                             'parent_class' => $parentClass,
                             'foreign_key' => $foreignKey,
                             'parent_table' => $parentTable,
-                            'suggested_code' => "protected array \$cacheTouches = ['{$methodName}'];",
+                            'suggested_code' => "protected array \$cacheParents = ['{$methodName}'];",
                             'suggested_tag' => "{$parentTable}:{\$this->{$foreignKey}}:{$childTable}",
                         ];
                     }
@@ -411,7 +411,7 @@ class CheckAtomicCacheCommand extends Command
     {
         $ref = new ReflectionClass($instance);
 
-        foreach (['cacheTouches', 'clearsRelations', 'cacheParents'] as $prop) {
+        foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
             if ($ref->hasProperty($prop)) {
                 $property = $ref->getProperty($prop);
                 $value = $property->getValue($instance);

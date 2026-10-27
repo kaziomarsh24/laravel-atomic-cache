@@ -166,13 +166,13 @@ trait AutoClearsCache
 
     /**
      * Resolve configured parent relation names supporting all three developer conventions:
-     * - $cacheTouches = ['store']   (Laravel $touches muscle memory)
-     * - $clearsRelations = ['store'] (Expressive clean English)
-     * - $cacheParents = ['store']   (Standard package convention)
+     * - $cacheParents = ['store']   (Standard package convention - Recommended)
+     * - $cacheTouches = ['store']   (Laravel $touches style alias)
+     * - $clearsRelations = ['store'] (Expressive clean English alias)
      */
     protected function resolveConfiguredParentRelations(): array
     {
-        foreach (['cacheTouches', 'clearsRelations', 'cacheParents'] as $prop) {
+        foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
             if (property_exists($this, $prop) && is_array($this->{$prop})) {
                 return $this->{$prop};
             }

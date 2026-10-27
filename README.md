@@ -488,7 +488,7 @@ Target Path: /var/www/html/app/Models
 
   • App\Models\Order:
     BelongsTo Store detected via store(), but parent cache is not linked.
-    👉 Quick Fix: Add protected array $cacheTouches = ['store']; to Order
+    👉 Quick Fix: Add protected array $cacheParents = ['store']; to Order
     ✨ Auto-invalidates: "stores:{$this->store_id}:orders"
 ```
 
@@ -521,7 +521,7 @@ When `$user->save()`, `$user->update()`, `$user->decrement()`, `$user->increment
 5. Automatically invalidates related tags: `dashboard`, `admin_stats`.
 *(Note: Direct mass database queries that bypass Eloquent models entirely like `DB::table('users')->decrement(...)` or `User::where(...)->update(...)` do not fire model events; call `AtomicCache::clearTags('users')` for those).*
 
-### Declarative Parent Invalidation (`$cacheTouches`)
+### Declarative Parent Invalidation (`$cacheParents`)
 
 Just like Laravel's native `protected $touches = ['store'];`, you can declare parent relationships to automatically invalidate parent-scoped cache tags whenever a child record is created, updated, soft-deleted, or restored:
 
@@ -536,8 +536,8 @@ class Order extends Model
 {
     use AutoClearsCache;
 
-    // Declarative Parent Invalidation (supports $cacheTouches, $clearsRelations, or $cacheParents)
-    protected array $cacheTouches = ['store'];
+    // Declarative Parent Invalidation (supports $cacheParents, or aliases $cacheTouches / $clearsRelations)
+    protected array $cacheParents = ['store'];
 
     public function store(): BelongsTo
     {
@@ -561,8 +561,8 @@ When an order in Store #5 is created or updated:
 | :--- | :--- | :--- |
 | **All Products List** | `tags: ['products']` | `Product` $\rightarrow$ `use AutoClearsCache;` *(automatic)* |
 | **Single Product by ID** | `tags: ['products:5', 'products']` | `Product` $\rightarrow$ `use AutoClearsCache;` *(automatic)* |
-| **Store's Orders List** | `tags: ['stores:5:orders', 'stores:5']` | `Order` $\rightarrow$ `protected array $cacheTouches = ['store'];` |
-| **Category's Products** | `tags: ['categories:3:products', 'categories:3']` | `Product` $\rightarrow$ `protected array $cacheTouches = ['category'];` |
+| **Store's Orders List** | `tags: ['stores:5:orders', 'stores:5']` | `Order` $\rightarrow$ `protected array $cacheParents = ['store'];` |
+| **Category's Products** | `tags: ['categories:3:products', 'categories:3']` | `Product` $\rightarrow$ `protected array $cacheParents = ['category'];` |
 
 > **Rule of Thumb:**
 > - **Cache Key:** The unique address of a specific box of data (includes method, page number, filters).

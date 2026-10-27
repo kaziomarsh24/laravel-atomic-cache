@@ -658,7 +658,7 @@
 
                 <div class="mt-8 mb-4">
                     <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">
-                        Declarative Parent Invalidation (<code class="text-blue-600 dark:text-blue-400 font-mono text-sm">$cacheTouches</code>)
+                        Declarative Parent Invalidation (<code class="text-blue-600 dark:text-blue-400 font-mono text-sm">$cacheParents</code>)
                     </h3>
                     <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-3">
                         Just like Laravel's native <code class="font-mono">$touches = ['store'];</code>, you can link parent relationships declaratively. When an order is created, modified, or restored, AtomicCache automatically calculates and flushes the parent store's cache without manual string construction or typo risks:
@@ -677,8 +677,8 @@
 {
     <span class="token-keyword">use</span> <span class="token-class">AutoClearsCache</span>;
 
-    <span class="token-comment">// Automatically flushes parent store caches on commit (supports $cacheTouches, $clearsRelations, or $cacheParents)</span>
-    <span class="token-keyword">protected</span> <span class="token-keyword">array</span> <span class="token-variable">$cacheTouches</span> <span class="token-operator">=</span> [<span class="token-string">'store'</span>];
+    <span class="token-comment">// Automatically flushes parent store caches on commit (supports $cacheParents, or aliases $cacheTouches / $clearsRelations)</span>
+    <span class="token-keyword">protected</span> <span class="token-keyword">array</span> <span class="token-variable">$cacheParents</span> <span class="token-operator">=</span> [<span class="token-string">'store'</span>];
 
     <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">store</span>()<span class="token-operator">:</span> <span class="token-class">BelongsTo</span>
     {
@@ -718,12 +718,12 @@
                             <tr>
                                 <td class="px-4 py-2.5 font-sans font-medium text-slate-900 dark:text-white">Store's Orders List</td>
                                 <td class="px-4 py-2.5 text-blue-600 dark:text-blue-400">['stores:5:orders', 'stores:5']</td>
-                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">$cacheTouches = ['store'];</td>
+                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">$cacheParents = ['store'];</td>
                             </tr>
                             <tr>
                                 <td class="px-4 py-2.5 font-sans font-medium text-slate-900 dark:text-white">Category's Products</td>
                                 <td class="px-4 py-2.5 text-blue-600 dark:text-blue-400">['categories:3:products', 'categories:3']</td>
-                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">$cacheTouches = ['category'];</td>
+                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">$cacheParents = ['category'];</td>
                             </tr>
                         </tbody>
                     </table>
