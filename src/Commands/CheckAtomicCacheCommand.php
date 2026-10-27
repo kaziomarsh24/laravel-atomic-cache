@@ -304,7 +304,8 @@ class CheckAtomicCacheCommand extends Command
                     if ($ref->getNumberOfRequiredParameters() === 0) {
                         $relation = $instance->{$relationName}();
                         if ($relation instanceof \Illuminate\Database\Eloquent\Relations\BelongsTo
-                            && !$relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo) {
+                            && !$relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo
+                            && $relation->getOwnerKeyName() === $relation->getRelated()->getKeyName()) {
                             $parentTable = $relation->getRelated()->getTable();
                             $related[] = "{$parentTable}:{id}:{$childTable}";
                             $related[] = "{$parentTable}:{id}";
@@ -375,12 +376,13 @@ class CheckAtomicCacheCommand extends Command
                 }
             }
 
-            // Guard 2: If file is accessible, inspect source code of the method to ensure it contains "belongsTo"
+            // Guard 2: Inspect source code strictly to ensure it actually returns a belongsTo relation.
+            // Prevents false positives where "belongsTo" is merely mentioned in a comment or string literal.
             if ($method->getFileName() && file_exists($method->getFileName())) {
                 try {
                     $fileLines = file($method->getFileName());
                     $body = implode("", array_slice($fileLines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
-                    if (!str_contains($body, "belongsTo")) {
+                    if (!preg_match('/return\s+\$this\s*->\s*belongsTo\s*\(/i', $body)) {
                         continue;
                     }
                 } catch (\Throwable) {
@@ -394,8 +396,14 @@ class CheckAtomicCacheCommand extends Command
                 if ($relation instanceof \Illuminate\Database\Eloquent\Relations\BelongsTo
                     && !$relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo) {
 
-                    $foreignKey = $relation->getForeignKeyName();
                     $parentModel = $relation->getRelated();
+
+                    // Guard against custom owner keys (e.g. belongsTo via slug/uuid) that differ from parent's primary key
+                    if ($relation->getOwnerKeyName() !== $parentModel->getKeyName()) {
+                        continue;
+                    }
+
+                    $foreignKey = $relation->getForeignKeyName();
                     $parentTable = $parentModel->getTable();
                     $parentClass = class_basename($parentModel);
 
@@ -438,6 +446,10 @@ class CheckAtomicCacheCommand extends Command
         foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
             if ($ref->hasProperty($prop)) {
                 $property = $ref->getProperty($prop);
+                // Guard: Skip uninitialized typed properties (e.g. protected array $cacheParents;)
+                if (!$property->isInitialized($instance)) {
+                    continue;
+                }
                 $value = $property->getValue($instance);
                 if (is_array($value)) {
                     return $value;

@@ -553,7 +553,12 @@ When an order in Store #5 is created or updated:
 - Automatically flushes parent child-scoped tag: `stores:5:orders`
 - Automatically flushes parent umbrella tag: `stores:5`
 - **Zero Cache Thrashing:** Leaving Store #1..#4 and unaffected models untouched!
-- **Dirty Foreign Key Protection:** If an order is moved from Store 1 to Store 2 (`$order->store_id = 2`), AtomicCache invalidates caches for **both** the old store (1) and the new store (2), completely preventing ghost data bugs!
+- **Dirty Foreign Key Protection:** If an order is moved from Store 1 to Store 2 (`$order->store_id = 2`), AtomicCache invalidates caches for **both** the old store (1) and the new store (2), completely preventing ghost data bugs even within nested `DB::transaction()` blocks!
+
+> [!NOTE]
+> **Parent Umbrella Tag Scope:** By design, `$cacheParents` flushes both the scoped collection tag (`stores:5:orders`) and the parent umbrella tag (`stores:5`). If your application caches the parent model's own record under `stores:5`, child writes will also refresh the parent's general cache.
+>
+> **Custom Owner Keys:** Standard parent invalidation targets primary-key relationships (`ownerKey === primaryKey`). If you use custom keys (e.g. `belongsTo(Store::class, 'store_slug', 'slug')`), manage custom domain tags via `getRelatedCacheTags()`.
 
 ### 🏷️ Cache Key vs Cache Tag Cheat-Sheet
 

@@ -125,6 +125,64 @@ class TestCombinedTagsModel extends Model
     }
 }
 
+class TestUninitializedPropertyModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_orders';
+    protected array $cacheParents; // Uninitialized typed property
+}
+
+class TestCustomOwnerKeyModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_orders';
+    protected array $cacheParents = ['storeBySlug'];
+
+    public function storeBySlug(): BelongsTo
+    {
+        return $this->belongsTo(TestStoreModel::class, 'store_slug', 'slug');
+    }
+}
+
+class TestCommentBelongsToModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_orders';
+    public static bool $commentMethodWasCalled = false;
+
+    public function fakeRelation()
+    {
+        // This belongsTo the order processing team
+        self::$commentMethodWasCalled = true;
+        return 'not a relation';
+    }
+}
+
+enum TestStoreEnum: int
+{
+    case Outlet = 77;
+    case Flagship = 88;
+}
+
+class TestMultiParentModel extends Model
+{
+    use AutoClearsCache;
+
+    protected $table = 'test_orders';
+    protected $guarded = [];
+    protected array $cacheParents = ['store', 'product'];
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(TestStoreModel::class, 'store_id');
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(TestProductModel::class, 'product_id');
+    }
+}
+
 /* -------------------------------------------------------------------------
 | Unit Test Suite for Declarative Parent Cache Invalidation
 | ------------------------------------------------------------------------- */
@@ -144,6 +202,7 @@ class ParentCacheTouchesTest extends TestCase
         Schema::create('test_orders', function (Blueprint $table) {
             $table->id();
             $table->foreignId('store_id')->nullable();
+            $table->foreignId('product_id')->nullable();
             $table->string('status')->default('pending');
             $table->softDeletes();
             $table->timestamps();
@@ -240,6 +299,33 @@ class ParentCacheTouchesTest extends TestCase
 
         // Both old parent (Store 1) and new parent (Store 2) MUST be cleared to avoid ghost data
         $this->assertNull(AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->get('s1_orders'));
+        $this->assertNull(AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->get('s2_orders'));
+    }
+
+    /**
+     * Test 2b: Changing foreign key inside DB::transaction invalidates BOTH stores after commit.
+     */
+    public function test_changing_foreign_key_inside_transaction_invalidates_both_old_and_new_parent_caches(): void
+    {
+        $store1 = TestStoreModel::create(['name' => 'Store One']);
+        $store2 = TestStoreModel::create(['name' => 'Store Two']);
+
+        $order = TestOrderModel::create(['store_id' => $store1->id, 'status' => 'pending']);
+
+        // Cache lists for both stores
+        AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->put('s1_orders', 'store_1_data', 3600);
+        AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->put('s2_orders', 'store_2_data', 3600);
+
+        $this->assertEquals('store_1_data', AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->get('s1_orders'));
+        $this->assertEquals('store_2_data', AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->get('s2_orders'));
+
+        // Move order from Store 1 to Store 2 inside DB::transaction
+        \Illuminate\Support\Facades\DB::transaction(function () use ($order, $store2) {
+            $order->update(['store_id' => $store2->id]);
+        });
+
+        // Both old parent (Store 1) and new parent (Store 2) MUST be cleared after transaction commits
+        $this->assertNull(AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->get('s1_orders'), 'Old parent cache was NOT cleared after transaction commit!');
         $this->assertNull(AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->get('s2_orders'));
     }
 
@@ -429,5 +515,166 @@ class ParentCacheTouchesTest extends TestCase
 
         $this->assertEmpty($advisories);
         $this->assertFalse($dangerousModel::$wasCalled, 'Dangerous method should never have been invoked by linter!');
+    }
+
+    /**
+     * Test 13: Uninitialized typed property (protected array $cacheParents;) does not throw fatal error.
+     */
+    public function test_uninitialized_typed_property_does_not_throw_error(): void
+    {
+        $model = new TestUninitializedPropertyModel();
+
+        // 1. Model trait resolution must not throw "Typed property must not be accessed before initialization"
+        $tags = $model->resolveCacheTagsToClear();
+        $this->assertContains('test_orders', $tags);
+
+        // 2. Command reflection extraction must not throw error
+        $command = new \KaziOmar\AtomicCache\Commands\CheckAtomicCacheCommand();
+        $refMethod = new \ReflectionMethod($command, 'getDeclaredParentRelations');
+        $result = $refMethod->invoke($command, $model);
+        $this->assertEquals([], $result);
+    }
+
+    /**
+     * Test 14: Custom owner keys (slug/uuid differing from parent primary key) are safely ignored.
+     */
+    public function test_custom_owner_key_belongs_to_is_safely_ignored(): void
+    {
+        $model = new TestCustomOwnerKeyModel();
+        $model->store_slug = 'nike-store';
+
+        // Custom owner key does not match parent primary key, so mismatched umbrella tags are avoided
+        $tags = $model->resolveCacheTagsToClear();
+        $this->assertNotContains('test_stores:nike-store', $tags);
+
+        // Command should also not recommend $cacheParents for custom owner key relations
+        $command = new \KaziOmar\AtomicCache\Commands\CheckAtomicCacheCommand();
+        $refMethod = new \ReflectionMethod($command, 'inspectModelBelongsToAdvisories');
+        $advisories = $refMethod->invoke($command, TestCustomOwnerKeyModel::class, $model, []);
+        $this->assertEmpty($advisories);
+    }
+
+    /**
+     * Test 15: Method with "belongsTo" in comment but not returning belongsTo is never invoked by linter.
+     */
+    public function test_method_with_belongs_to_in_comment_is_not_invoked(): void
+    {
+        $model = new TestCommentBelongsToModel();
+
+        $command = new \KaziOmar\AtomicCache\Commands\CheckAtomicCacheCommand();
+        $refMethod = new \ReflectionMethod($command, 'inspectModelBelongsToAdvisories');
+        $advisories = $refMethod->invoke($command, TestCommentBelongsToModel::class, $model, []);
+
+        $this->assertEmpty($advisories);
+        $this->assertFalse(TestCommentBelongsToModel::$commentMethodWasCalled, 'Method with belongsTo in comment was incorrectly executed!');
+    }
+
+    /**
+     * Test 16: Edge Case - Database transaction rollback NEVER clears parent or child cache.
+     */
+    public function test_transaction_rollback_does_not_clear_parent_cache(): void
+    {
+        $store1 = TestStoreModel::create(['name' => 'Store One']);
+        $store2 = TestStoreModel::create(['name' => 'Store Two']);
+        $order = TestOrderModel::create(['store_id' => $store1->id, 'status' => 'pending']);
+
+        AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->put('orders_list', 'cached_store_1', 3600);
+        AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->put('orders_list', 'cached_store_2', 3600);
+
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($order, $store2) {
+                $order->update(['store_id' => $store2->id]);
+                throw new \Exception('Simulated payment failure / exception forcing rollback');
+            });
+        } catch (\Throwable) {
+            // Rollback occurred
+        }
+
+        // Neither store's cache should be cleared because transaction was aborted
+        $this->assertEquals('cached_store_1', AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->get('orders_list'));
+        $this->assertEquals('cached_store_2', AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->get('orders_list'));
+    }
+
+    /**
+     * Test 17: Edge Case - Multiple updates on the same model in the same transaction (Store 1 -> 2 -> 3).
+     */
+    public function test_multiple_updates_in_same_transaction_invalidates_all_participating_parent_caches(): void
+    {
+        $store1 = TestStoreModel::create(['name' => 'Store 1']);
+        $store2 = TestStoreModel::create(['name' => 'Store 2']);
+        $store3 = TestStoreModel::create(['name' => 'Store 3']);
+        $order = TestOrderModel::create(['store_id' => $store1->id, 'status' => 'pending']);
+
+        AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->put('s1', 'val1', 3600);
+        AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->put('s2', 'val2', 3600);
+        AtomicCache::tags(["test_stores:{$store3->id}:test_orders"])->put('s3', 'val3', 3600);
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($order, $store2, $store3) {
+            $order->update(['store_id' => $store2->id]);
+            $order->update(['store_id' => $store3->id]);
+        });
+
+        // All 3 stores must be cleared: initial (1), intermediate (2), and final (3)
+        $this->assertNull(AtomicCache::tags(["test_stores:{$store1->id}:test_orders"])->get('s1'));
+        $this->assertNull(AtomicCache::tags(["test_stores:{$store2->id}:test_orders"])->get('s2'));
+        $this->assertNull(AtomicCache::tags(["test_stores:{$store3->id}:test_orders"])->get('s3'));
+    }
+
+    /**
+     * Test 18: Edge Case - Multiple parent relationships declared on a single model (e.g. ['store', 'product']).
+     */
+    public function test_multiple_parent_relations_on_single_model_clears_all_parents(): void
+    {
+        $store = TestStoreModel::create(['name' => 'Super Shop']);
+        $product = TestProductModel::create(['name' => 'Laptop']);
+
+        AtomicCache::tags(["test_stores:{$store->id}:test_orders"])->put('store_orders', 'data1', 3600);
+        AtomicCache::tags(["test_products:{$product->id}:test_orders"])->put('product_orders', 'data2', 3600);
+
+        $order = TestMultiParentModel::create([
+            'store_id' => $store->id,
+            'product_id' => $product->id,
+            'status' => 'pending',
+        ]);
+
+        // Both store and product parent caches must be invalidated!
+        $this->assertNull(AtomicCache::tags(["test_stores:{$store->id}:test_orders"])->get('store_orders'));
+        $this->assertNull(AtomicCache::tags(["test_products:{$product->id}:test_orders"])->get('product_orders'));
+    }
+
+    /**
+     * Test 19: Edge Case - PHP BackedEnum foreign key values resolve cleanly without error.
+     */
+    public function test_backed_enum_foreign_key_resolves_cleanly(): void
+    {
+        $order = new TestOrderModel();
+        $order->store_id = TestStoreEnum::Outlet;
+
+        $tags = $order->resolveCacheTagsToClear();
+
+        $this->assertContains('test_stores:77:test_orders', $tags);
+        $this->assertContains('test_stores:77', $tags);
+    }
+
+    /**
+     * Test 20: Edge Case - Force delete (permanent delete on SoftDeletes model) clears parent cache.
+     */
+    public function test_force_delete_clears_parent_cache(): void
+    {
+        $store = TestStoreModel::create(['name' => 'Outlet']);
+        $order = TestOrderModel::create(['store_id' => $store->id, 'status' => 'active']);
+
+        // First soft delete
+        $order->delete();
+
+        // Re-cache
+        AtomicCache::tags(["test_stores:{$store->id}:test_orders"])->put('items', 'cached_data', 3600);
+        $this->assertEquals('cached_data', AtomicCache::tags(["test_stores:{$store->id}:test_orders"])->get('items'));
+
+        // Permanent force delete
+        $order->forceDelete();
+
+        // Parent cache must be invalidated
+        $this->assertNull(AtomicCache::tags(["test_stores:{$store->id}:test_orders"])->get('items'));
     }
 }

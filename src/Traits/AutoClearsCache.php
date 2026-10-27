@@ -40,14 +40,18 @@ trait AutoClearsCache
 
     /**
      * Clear caches after active database transaction commits on the model's actual connection.
+     * Evaluates cache tags immediately so original/dirty attribute states (e.g. changed foreign keys)
+     * are captured before finishSave() executes syncOriginal().
      */
     public function clearModelCacheOnCommit(): void
     {
-        $callback = function () {
-            $tagsToClear = $this->resolveCacheTagsToClear();
-            if (!empty($tagsToClear)) {
-                AtomicCache::clearTags($tagsToClear);
-            }
+        $tagsToClear = $this->resolveCacheTagsToClear();
+        if (empty($tagsToClear)) {
+            return;
+        }
+
+        $callback = function () use ($tagsToClear) {
+            AtomicCache::clearTags($tagsToClear);
         };
 
         $connection = $this->getConnection();
@@ -136,19 +140,35 @@ trait AutoClearsCache
                     continue;
                 }
 
-                $foreignKey = $relation->getForeignKeyName();
                 $parentModel = $relation->getRelated();
                 $parentTable = $parentModel->getTable();
+
+                // Safeguard: Custom owner key guard (e.g. belongsTo(Store::class, 'store_slug', 'slug'))
+                // The owner key must match the parent model's primary key name, otherwise parent umbrella
+                // tags would mismatch (e.g. parent clears 'stores:5' but child generated 'stores:nike').
+                if ($relation->getOwnerKeyName() !== $parentModel->getKeyName()) {
+                    continue;
+                }
+
+                $foreignKey = $relation->getForeignKeyName();
 
                 // Safeguard: Handle both current and original foreign keys in case the parent changed (e.g. store 1 -> store 2)
                 $currentParentId = $this->getAttribute($foreignKey);
                 $originalParentId = $this->getOriginal($foreignKey);
 
                 $parentIds = array_unique(array_filter([$currentParentId, $originalParentId], function ($id) {
-                    return (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) && (string) $id !== '';
+                    if ($id instanceof \BackedEnum) {
+                        $id = $id->value;
+                    }
+                    return (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) && trim((string) $id) !== '';
                 }));
 
                 foreach ($parentIds as $parentId) {
+                    if ($parentId instanceof \BackedEnum) {
+                        $parentId = $parentId->value;
+                    }
+                    $parentId = trim((string) $parentId);
+
                     // 1. Scoped collection tag: "stores:5:orders"
                     $tags[] = "{$parentTable}:{$parentId}:{$childTable}";
 
@@ -173,14 +193,19 @@ trait AutoClearsCache
     protected function resolveConfiguredParentRelations(): array
     {
         foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
-            if (property_exists($this, $prop)) {
-                $val = $this->{$prop};
-                if (is_array($val)) {
-                    return $val;
+            try {
+                // Check isset to safely handle uninitialized typed properties (e.g. protected array $cacheParents;)
+                if (isset($this->{$prop})) {
+                    $val = $this->{$prop};
+                    if (is_array($val)) {
+                        return $val;
+                    }
+                    if (is_string($val) && trim($val) !== '') {
+                        return [trim($val)];
+                    }
                 }
-                if (is_string($val) && trim($val) !== '') {
-                    return [trim($val)];
-                }
+            } catch (\Throwable) {
+                continue;
             }
         }
 
