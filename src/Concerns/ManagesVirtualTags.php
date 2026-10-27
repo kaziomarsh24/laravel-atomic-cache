@@ -27,7 +27,20 @@ trait ManagesVirtualTags
 
         $store = $this->getRawStore();
 
-        // Native taggable store (Redis, Memcached):
+        // 1. Rotate OCC version tokens for all tags across ALL drivers (Redis, Memcached, File, Database, Array)
+        // Universal UUID tokens eliminate eviction counter collisions and guarantee OCC across all stores
+        $allSuccess = true;
+        foreach ($tagList as $tag) {
+            try {
+                $tagVersionKey = $this->formatVirtualTagKey($tag);
+                $store->forever($tagVersionKey, (string) Str::uuid());
+            } catch (Throwable $e) {
+                $allSuccess = false;
+                Log::warning("[AtomicCache] Failed to invalidate tag version token '{$tag}': " . $e->getMessage());
+            }
+        }
+
+        // 2. Native taggable store (Redis, Memcached): Flush underlying native tag sets
         if ($this->supportsTags($store)) {
             try {
                 $this->purgeRedisTaggedKeysIfNeeded($store, $tagList);
@@ -36,19 +49,6 @@ trait ManagesVirtualTags
             } catch (Throwable $e) {
                 Log::warning("[AtomicCache] Native tag flush failed: " . $e->getMessage());
                 return false;
-            }
-        }
-
-        // Graceful fallback for non-taggable stores (file, database):
-        // Update virtual tag version tokens to invalidate all related entries instantly!
-        $allSuccess = true;
-        foreach ($tagList as $tag) {
-            try {
-                $tagVersionKey = $this->formatVirtualTagKey($tag);
-                $store->forever($tagVersionKey, (string) Str::uuid());
-            } catch (Throwable $e) {
-                $allSuccess = false;
-                Log::warning("[AtomicCache] Failed to invalidate virtual tag '{$tag}': " . $e->getMessage());
             }
         }
 
@@ -155,18 +155,11 @@ trait ManagesVirtualTags
             return '';
         }
 
-        if ($this->supportsTags($store)) {
-            try {
-                $tagged = $store->tags($normalized);
-                if (method_exists($tagged, 'getTags') && method_exists($tagged->getTags(), 'getNamespace')) {
-                    return (string) $tagged->getTags()->getNamespace();
-                }
-            } catch (Throwable) {
-                // Fall back to virtual tag resolution if native tags fail
-            }
-        }
-
-        return $this->resolveKeyForStore('', $normalized, $store);
+        // Retrieve dedicated UUID version tokens for these tags.
+        // Works universally across Redis, Memcached, File, Database, and Array drivers!
+        $versions = $this->getVirtualTagVersions($normalized, $store);
+        ksort($versions);
+        return md5(json_encode($versions));
     }
 
     /**

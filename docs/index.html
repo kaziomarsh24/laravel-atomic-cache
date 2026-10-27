@@ -823,7 +823,7 @@
                         Declarative Parent Invalidation (<code class="text-blue-600 dark:text-blue-400 font-mono text-sm">$cacheParents</code>)
                     </h3>
                     <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-3">
-                        Just like Laravel's native <code class="font-mono">$touches = ['store'];</code>, you can link parent relationships declaratively. When an order is created, modified, or restored, AtomicCache automatically calculates and flushes the parent store's cache without manual string construction or typo risks:
+                        Similar in spirit to Laravel's native <code class="font-mono">$touches = ['store'];</code> (operating on a single-level <code class="font-mono">BelongsTo</code> relation), you can link parent relationships declaratively. When an order is created, modified, or restored, AtomicCache automatically calculates and flushes the parent store's cache without manual string construction or typo risks:
                     </p>
                 </div>
 

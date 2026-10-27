@@ -12,6 +12,7 @@ class ClearAtomicCacheCommand extends Command
      */
     protected $signature = 'atomic-cache:clear 
                             {tag? : The specific cache tag or key to clear}
+                            {--tags= : Comma-separated list of cache tags to clear}
                             {--all : Clear all entries in the cache store}
                             {--force : Force the operation without confirmation prompt}';
 
@@ -26,6 +27,7 @@ class ClearAtomicCacheCommand extends Command
     public function handle(): int
     {
         $tag = $this->argument('tag');
+        $tagsOption = $this->option('tags');
         $all = $this->option('all');
         $force = $this->option('force');
 
@@ -38,6 +40,15 @@ class ClearAtomicCacheCommand extends Command
             AtomicCache::getRawStore()->flush();
             $this->info('Atomic Cache: All entries cleared successfully.');
             return self::SUCCESS;
+        }
+
+        if ($tagsOption) {
+            $tagList = array_values(array_filter(array_map('trim', explode(',', (string) $tagsOption))));
+            if (!empty($tagList)) {
+                AtomicCache::clearTags($tagList);
+                $this->info('Atomic Cache: Cleared tags [' . implode(', ', $tagList) . '].');
+                return self::SUCCESS;
+            }
         }
 
         if ($tag) {

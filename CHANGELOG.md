@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Universal OCC Version Tokens Across All Drivers:** Resolved native Redis tag OCC limitation by implementing universal atomic UUID version tokens (`__vt__{$tag}`) rotated during `clearTags()` across all cache drivers (Redis, Memcached, File, Database, Array). Guarantees that Optimistic Concurrency Control reliably detects mid-flight invalidations and discards stale writes regardless of underlying cache store.
+- **Multi-Tag CLI Invalidation (`--tags`):** Added `{--tags=}` option to `ClearAtomicCacheCommand` (`php artisan atomic-cache:clear --tags=users,orders`) to support comma-separated multi-tag purging.
 - **Model Manual Flush Helpers:** Added `$model->clearCache()` instance method (expressive alias for `clearModelCacheOnCommit()`) and `Model::flushCache()` static method in `AutoClearsCache` trait for single-line manual cache invalidation after bulk updates, mass deletes, or direct SQL queries.
 - **Class-Level In-Memory Static Cache:** Added `static::$configuredParentRelationsCache` in `AutoClearsCache` to cache resolved parent relations per model class, eliminating property inspection overhead during repeated batch saves.
 - **Private Property Declarations Supported:** Verified and tested support for models declaring `private array $cacheParents`, ensuring private parent relation definitions are safely extracted across PHP 8.2–8.5 without requiring deprecated `setAccessible()` calls.

@@ -844,6 +844,23 @@ class AtomicCacheTest extends TestCase
         $this->assertNull(AtomicCache::get('persist_key'));
     }
 
+    public function test_clear_command_with_tags_option_clears_multiple_tags(): void
+    {
+        AtomicCache::tags(['orders'])->put('order_k', 'order_val', 60);
+        AtomicCache::tags(['users'])->put('user_k', 'user_val', 60);
+
+        $this->assertEquals('order_val', AtomicCache::tags(['orders'])->get('order_k'));
+        $this->assertEquals('user_val', AtomicCache::tags(['users'])->get('user_k'));
+
+        $exitCode = \Illuminate\Support\Facades\Artisan::call('atomic-cache:clear', [
+            '--tags' => 'orders, users',
+        ]);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertNull(AtomicCache::tags(['orders'])->get('order_k'));
+        $this->assertNull(AtomicCache::tags(['users'])->get('user_k'));
+    }
+
     public function test_query_macro_differentiates_eager_loads_fingerprint(): void
     {
         TestPost::create(['title' => 'Eager Load Post']);

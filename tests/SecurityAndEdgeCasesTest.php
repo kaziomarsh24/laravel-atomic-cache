@@ -373,6 +373,22 @@ class SecurityAndEdgeCasesTest extends TestCase
     }
 
     /**
+     * Test 10b: Native taggable store OCC discards stale write when tags are invalidated mid-flight.
+     */
+    public function test_native_taggable_store_occ_discards_stale_cache_write_when_invalidated_mid_flight(): void
+    {
+        $computed = AtomicCache::store('array')->tags(['catalog'])->remember('occ_native_key', 3600, function () {
+            // Invalidate 'catalog' tag mid-flight while computation is running
+            AtomicCache::store('array')->clearTags(['catalog']);
+            return 'stale_native_value';
+        });
+
+        $this->assertEquals('stale_native_value', $computed);
+        // Stale write must be discarded because tag was invalidated mid-flight
+        $this->assertNull(AtomicCache::store('array')->tags(['catalog'])->get('occ_native_key'));
+    }
+
+    /**
      * Test 11: Zero or negative TTL immediately forgets the cached key.
      */
     public function test_zero_or_negative_ttl_forgets_item_immediately(): void
