@@ -32,7 +32,8 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 ## 📑 Table of Contents
 
 - [Why Laravel Atomic Cache?](#why-laravel-atomic-cache)
-- [When NOT to Cache](#-when-not-to-cache)
+- [When NOT to Cache & Known Limitations](#-when-not-to-cache--known-limitations)
+  - [Architectural Limitations & Gotchas](#️-architectural-limitations--gotchas)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [⚡ Quickstart in 10 Seconds (Zero-Config Guide)](#-quickstart-in-10-seconds-zero-config-guide)
@@ -80,13 +81,83 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 
 ---
 
-## 🛑 When NOT to Cache
+## 🛑 When NOT to Cache & Known Limitations
 
 Caching is not suitable for every workload. To maintain system reliability, avoid caching in these scenarios:
 
 - **Real-Time WebSockets & Chat Messages:** Chat messages (`ChatMessage`) should be pushed directly via Laravel Reverb or Pusher. Caching them creates unnecessary memory churn without read benefits.
 - **High-Frequency GPS & Telemetry:** Live driver/rider coordinates streaming every few seconds belong in Redis Pub/Sub, Kafka, or ClickHouse, not application-level cache.
 - **Financial Transactions & Stock Deductions:** Real-time wallet balances, inventory decrements, and audit logs require pessimistic database row locks (`lockForUpdate()`) to guarantee absolute transactional consistency.
+
+---
+
+### ⚠️ Architectural Limitations & Gotchas
+
+#### 1. Eloquent Mass Operations (Bypasses Model Events)
+When performing direct database queries or Eloquent query builder batch mutations, Laravel **does not fire model events** (`saved`, `updated`, `deleted`):
+
+```php
+// ❌ WARNING: Mass query builder updates DO NOT trigger Eloquent model events:
+Product::where('category_id', 5)->update(['status' => 'archived']);
+Product::where('expired', true)->delete();
+DB::table('products')->where('id', 1)->delete();
+
+// 👉 AutoClearsCache cannot detect query-level mutations because no events are fired.
+
+// ✅ Solution 1: Explicitly clear the table tags right after mass operations:
+AtomicCache::clearTags([Product::class]); // or AtomicCache::clearTags(['products']);
+
+// ✅ Solution 2: Iterate records if you need model event hooks & parent cascade:
+Product::where('category_id', 5)->get()->each->update(['status' => 'archived']);
+```
+
+#### 2. Pagination with Query Macros (`atomicCache()`)
+The `->atomicCache()` query macro is a terminal execution that immediately executes `->get()` and returns an Eloquent `Collection` (while `->atomicCacheFirst()` calls `->first()`).
+
+```php
+// ❌ Don't chain ->paginate() after ->atomicCache():
+// Product::where('status', 'active')->atomicCache()->paginate(15); 
+// Error: Call to undefined method Illuminate\Database\Eloquent\Collection::paginate()
+
+// ✅ How to cache paginated results properly:
+
+// Approach A: Service/Repository Layer with HasAtomicCache (Recommended)
+// HasAtomicCache automatically incorporates request query strings & page numbers:
+class ProductService
+{
+    use HasAtomicCache;
+
+    public function getActiveProducts()
+    {
+        return $this->remember(3600, fn() => Product::where('status', 'active')->paginate(15), tags: [Product::class]);
+    }
+}
+
+// Approach B: Explicit key with AtomicCache facade
+$page = request()->get('page', 1);
+$products = AtomicCache::tags([Product::class])
+    ->remember("products:active:page:{$page}", 3600, function () {
+        return Product::where('status', 'active')->paginate(15);
+    });
+```
+
+#### 3. Invalidation Granularity on Write-Heavy Tables
+`AutoClearsCache` operates on table-level invalidation tags (e.g. `products`, `orders`).
+- **Read-Heavy Tables (Recommended):** Catalogues, products, categories, settings, articles, and profiles experience high cache hit rates (95%+).
+- **Write-Heavy Tables:** Tables with continuous high-volume writes (e.g., live activity logs, high-frequency stock tickers, IoT sensor logs) will repeatedly invalidate the table tag.
+- **Best Practice:** For write-heavy tables, do not attach broad table tags. Instead, cache single records with targeted unique keys:
+  ```php
+  // Targeted record caching without clearing the whole table:
+  AtomicCache::remember("user:metric:{$userId}", 300, fn() => ...);
+  ```
+
+#### 4. Raw SQL & Subqueries in Query Macros
+The `atomicCache()` macro automatically inspects standard `join()` and `leftJoin()` methods to attach join table tags. However, complex raw SQL (`joinRaw()`) or nested `whereExists()` subqueries are not dynamically parsed.
+- **Best Practice:** Pass additional table tags explicitly when using raw joins:
+  ```php
+  Order::joinRaw('LEFT JOIN customers ON customers.id = orders.customer_id')
+      ->atomicCache(3600, tags: ['customers']);
+  ```
 
 ---
 

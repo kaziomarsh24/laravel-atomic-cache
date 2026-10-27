@@ -186,7 +186,7 @@
                         </li>
                         <li>
                             <a href="#limitations" data-nav="limitations" class="sidebar-item block px-2.5 py-1.5 rounded-md font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
-                                When NOT to Cache
+                                When NOT to Cache &amp; Limitations
                             </a>
                         </li>
                         <li>
@@ -389,14 +389,14 @@
                 </ul>
             </section>
 
-            <!-- Section 4: When NOT to Cache -->
+            <!-- Section 4: When NOT to Cache & Limitations -->
             <section id="limitations" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200/70 dark:border-zinc-800">
                 <h2 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-4">
-                    When NOT to Cache
+                    When NOT to Cache &amp; Known Limitations
                 </h2>
 
                 <p class="text-[15px] sm:text-base text-slate-600 dark:text-zinc-300 leading-relaxed mb-4">
-                    Caching is not suitable for all data. Avoid caching in these situations:
+                    Caching is not suitable for all data. Avoid caching in these specific scenarios:
                 </p>
 
                 <ul class="list-disc pl-5 space-y-2 text-[15px] text-slate-600 dark:text-zinc-300 mb-6">
@@ -404,6 +404,66 @@
                     <li><strong class="text-slate-900 dark:text-white">High-Frequency GPS &amp; Telemetry:</strong> Live rider location updates sent every 3 seconds belong in Redis Pub/Sub, Kafka, or ClickHouse, not application-level cache.</li>
                     <li><strong class="text-slate-900 dark:text-white">Audit Ledgers &amp; Financial Balances:</strong> Financial transactions and audit logs are write-heavy and must be queried directly from the authoritative database with row locks.</li>
                 </ul>
+
+                <h3 class="text-lg font-bold text-slate-900 dark:text-white mt-8 mb-3">
+                    ⚠️ Architectural Limitations &amp; Gotchas
+                </h3>
+
+                <div class="space-y-6">
+                    <!-- Gotcha 1: Mass Operations -->
+                    <div class="p-5 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20">
+                        <h4 class="text-sm font-bold text-amber-900 dark:text-amber-300 flex items-center gap-2 mb-2">
+                            <span>1. Eloquent Mass Operations (Bypasses Model Events)</span>
+                        </h4>
+                        <p class="text-[14px] text-slate-700 dark:text-zinc-300 leading-relaxed mb-3">
+                            Direct query builder batch updates or deletes (e.g. <code>Product::where(...)-&gt;update(...)</code>, <code>delete()</code>, <code>insert()</code>) <strong>do not fire Eloquent model events</strong>. Consequently, <code>AutoClearsCache</code> will not automatically trigger.
+                        </p>
+                        <div class="relative group my-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                            <pre class="p-4 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// ❌ Mass updates bypass Eloquent events:</span>
+<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'category_id'</span>, <span class="token-number">5</span>)<span class="token-operator">-&gt;</span><span class="token-function">update</span>([<span class="token-string">'status'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'archived'</span>]);
+
+<span class="token-comment">// ✅ Solution: Clear the model table tag explicitly:</span>
+<span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">clearTags</span>([<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>]); <span class="token-comment">// or AtomicCache::clearTags(['products']);</span></code></pre>
+                            <button onclick="copyCode(this)" class="absolute top-2.5 right-2.5 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
+                        </div>
+                    </div>
+
+                    <!-- Gotcha 2: Pagination with atomicCache -->
+                    <div class="p-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
+                        <h4 class="text-sm font-bold text-slate-900 dark:text-white mb-2">
+                            2. Pagination with Query Macros (<code>-&gt;atomicCache()</code>)
+                        </h4>
+                        <p class="text-[14px] text-slate-700 dark:text-zinc-300 leading-relaxed mb-3">
+                            The <code>-&gt;atomicCache()</code> macro immediately terminates the query and executes <code>-&gt;get()</code>, returning an Eloquent <code>Collection</code>. You cannot chain <code>-&gt;paginate()</code> afterwards.
+                        </p>
+                        <div class="relative group my-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                            <pre class="p-4 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// ✅ Approach A: Use HasAtomicCache in your Service Layer (Recommended)</span>
+<span class="token-comment">// Automatically handles request query strings and page numbers:</span>
+<span class="token-keyword">class</span> <span class="token-class">ProductService</span> {
+    <span class="token-keyword">use</span> <span class="token-class">HasAtomicCache</span>;
+
+    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">getActiveProducts</span>() {
+        <span class="token-keyword">return</span> <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">remember</span>(<span class="token-number">3600</span>, <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'status'</span>, <span class="token-string">'active'</span>)<span class="token-operator">-&gt;</span><span class="token-function">paginate</span>(<span class="token-number">15</span>), tags: [<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>]);
+    }
+}
+
+<span class="token-comment">// ✅ Approach B: Explicit key caching with page number:</span>
+<span class="token-variable">$page</span> <span class="token-operator">=</span> <span class="token-function">request</span>()<span class="token-operator">-&gt;</span><span class="token-function">get</span>(<span class="token-string">'page'</span>, <span class="token-number">1</span>);
+<span class="token-variable">$items</span> <span class="token-operator">=</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">tags</span>([<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>])<span class="token-operator">-&gt;</span><span class="token-function">remember</span>(<span class="token-string">"products:page:{$page}"</span>, <span class="token-number">3600</span>, <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">paginate</span>(<span class="token-number">15</span>));</code></pre>
+                            <button onclick="copyCode(this)" class="absolute top-2.5 right-2.5 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
+                        </div>
+                    </div>
+
+                    <!-- Gotcha 3: Write-Heavy Tables -->
+                    <div class="p-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
+                        <h4 class="text-sm font-bold text-slate-900 dark:text-white mb-2">
+                            3. Invalidation Granularity on Write-Heavy Tables
+                        </h4>
+                        <p class="text-[14px] text-slate-700 dark:text-zinc-300 leading-relaxed">
+                            <code>AutoClearsCache</code> automatically invalidates the entire table tag (e.g. <code>products</code>). For read-heavy tables (catalogs, settings, profiles), this provides a 95%+ cache hit rate. However, for write-heavy tables (e.g. live impression counters, audit logs), every insert clears the table tag. In write-heavy scenarios, use item-specific keys (e.g. <code>AtomicCache::remember("item:{$id}", ...)</code>) without broad table tags.
+                        </p>
+                    </div>
+                </div>
             </section>
 
             <!-- Section 5: 10-Second Quickstart -->
@@ -1288,7 +1348,7 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                 <li data-toc="overview"><a href="#overview" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Introduction</a></li>
                 <li data-toc="why-this-exists"><a href="#why-this-exists" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Why AtomicCache?</a></li>
                 <li data-toc="who-is-this-for"><a href="#who-is-this-for" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Who Is This For?</a></li>
-                <li data-toc="limitations"><a href="#limitations" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">When NOT to Cache</a></li>
+                <li data-toc="limitations"><a href="#limitations" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">When NOT to Cache &amp; Limitations</a></li>
                 <li data-toc="quickstart"><a href="#quickstart" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">10-Second Quickstart</a></li>
                 <li data-toc="installation"><a href="#installation" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Installation</a></li>
                 <li data-toc="query-macros"><a href="#query-macros" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">1. Product Catalog</a></li>
