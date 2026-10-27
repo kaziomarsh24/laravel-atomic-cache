@@ -481,8 +481,15 @@ Target Path: /var/www/html/app/Models
 | • Exempt (Telemetry / Ephemeral): 16                                    |
 | • Recommended: 5                                                        |
 |                                                                         |
-| Architecture Health Score: 87% (Good)                        |
+| Architecture Health Score: 87% (Good)                                   |
 +-------------------------------------------------------------------------+
+
+💡 Invalidation Architecture Guidance (1 suggested rule):
+
+  • App\Models\Order:
+    BelongsTo Store detected via store(), but parent cache is not linked.
+    👉 Quick Fix: Add protected array $cacheTouches = ['store']; to Order
+    ✨ Auto-invalidates: "stores:{$this->store_id}:orders"
 ```
 
 ---
@@ -513,6 +520,53 @@ When `$user->save()`, `$user->update()`, `$user->decrement()`, `$user->increment
 4. Automatically invalidates collection tag: `users`.
 5. Automatically invalidates related tags: `dashboard`, `admin_stats`.
 *(Note: Direct mass database queries that bypass Eloquent models entirely like `DB::table('users')->decrement(...)` or `User::where(...)->update(...)` do not fire model events; call `AtomicCache::clearTags('users')` for those).*
+
+### Declarative Parent Invalidation (`$cacheTouches`)
+
+Just like Laravel's native `protected $touches = ['store'];`, you can declare parent relationships to automatically invalidate parent-scoped cache tags whenever a child record is created, updated, soft-deleted, or restored:
+
+```php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use KaziOmar\AtomicCache\Traits\AutoClearsCache;
+
+class Order extends Model
+{
+    use AutoClearsCache;
+
+    // Declarative Parent Invalidation (supports $cacheTouches, $clearsRelations, or $cacheParents)
+    protected array $cacheTouches = ['store'];
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+}
+```
+
+#### What happens under the hood:
+When an order in Store #5 is created or updated:
+- Automatically flushes child item tag: `orders:{id}`
+- Automatically flushes child collection tag: `orders`
+- Automatically flushes parent child-scoped tag: `stores:5:orders`
+- Automatically flushes parent umbrella tag: `stores:5`
+- **Zero Cache Thrashing:** Leaving Store #1..#4 and unaffected models untouched!
+- **Dirty Foreign Key Protection:** If an order is moved from Store 1 to Store 2 (`$order->store_id = 2`), AtomicCache invalidates caches for **both** the old store (1) and the new store (2), completely preventing ghost data bugs!
+
+### 🏷️ Cache Key vs Cache Tag Cheat-Sheet
+
+| What are you caching? | Service Cache Tag | Model Declaration |
+| :--- | :--- | :--- |
+| **All Products List** | `tags: ['products']` | `Product` $\rightarrow$ `use AutoClearsCache;` *(automatic)* |
+| **Single Product by ID** | `tags: ['products:5', 'products']` | `Product` $\rightarrow$ `use AutoClearsCache;` *(automatic)* |
+| **Store's Orders List** | `tags: ['stores:5:orders', 'stores:5']` | `Order` $\rightarrow$ `protected array $cacheTouches = ['store'];` |
+| **Category's Products** | `tags: ['categories:3:products', 'categories:3']` | `Product` $\rightarrow$ `protected array $cacheTouches = ['category'];` |
+
+> **Rule of Thumb:**
+> - **Cache Key:** The unique address of a specific box of data (includes method, page number, filters).
+> - **Cache Tag:** The label on the box used for grouped mass-invalidation (never includes page numbers or filters). Format: `{parent}:{parent_id}:{child}`.
 
 ---
 

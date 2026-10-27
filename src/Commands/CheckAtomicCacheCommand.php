@@ -55,6 +55,7 @@ class CheckAtomicCacheCommand extends Command
                     'active' => [],
                     'exempt' => [],
                     'recommended' => [],
+                    'advisories' => [],
                     'health_score' => 100,
                 ], JSON_PRETTY_PRINT));
                 return self::SUCCESS;
@@ -66,6 +67,7 @@ class CheckAtomicCacheCommand extends Command
         $activeModels = [];
         $exemptModels = [];
         $recommendedModels = [];
+        $advisories = [];
 
         foreach ($models as $class) {
             $usesTrait = in_array(AutoClearsCache::class, class_uses_recursive($class), true);
@@ -88,6 +90,11 @@ class CheckAtomicCacheCommand extends Command
                     $resolvedRelated = $this->extractRelatedTags($instance);
                     if (!empty($resolvedRelated)) {
                         $related = implode(', ', $resolvedRelated);
+                    }
+
+                    $modelAdvisories = $this->inspectModelBelongsToAdvisories($class, $instance, $resolvedRelated);
+                    if (!empty($modelAdvisories)) {
+                        $advisories = array_merge($advisories, $modelAdvisories);
                     }
                 }
 
@@ -134,6 +141,7 @@ class CheckAtomicCacheCommand extends Command
                 'active' => $activeModels,
                 'exempt' => $exemptModels,
                 'recommended' => $recommendedModels,
+                'advisories' => $advisories,
                 'health_score' => $healthScore,
             ];
             $this->output->writeln(json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -183,6 +191,11 @@ class CheckAtomicCacheCommand extends Command
         $this->newLine();
         $this->displaySummaryBox($totalCount, $activeCount, $exemptCount, $recommendedCount, $healthScore);
 
+        if (!empty($advisories)) {
+            $this->newLine();
+            $this->displayAdvisoriesBox($advisories);
+        }
+
         return self::SUCCESS;
     }
 
@@ -205,6 +218,25 @@ class CheckAtomicCacheCommand extends Command
         if ($recommended > 0) {
             $this->newLine();
             $this->line("<comment>Guidance:</comment> Models marked [Recommended] can benefit from 'use \\KaziOmar\\AtomicCache\\Traits\\AutoClearsCache;'");
+        }
+    }
+
+    /**
+     * Display friendly proactive invalidation guidance for unlinked relationships.
+     */
+    protected function displayAdvisoriesBox(array $advisories): void
+    {
+        $count = count($advisories);
+        $this->line("<comment>💡 Invalidation Architecture Guidance ({$count} suggested " . ($count === 1 ? 'rule' : 'rules') . '):</comment>');
+        $this->newLine();
+
+        foreach ($advisories as $item) {
+            $shortModel = class_basename($item['model']);
+            $this->line("  <info>• {$item['model']}:</info>");
+            $this->line("    BelongsTo <comment>{$item['parent_class']}</comment> detected via <comment>{$item['relation']}()</comment>, but parent cache is not linked.");
+            $this->line("    👉 Quick Fix: Add <info>{$item['suggested_code']}</info> to {$shortModel}");
+            $this->line("    ✨ Auto-invalidates: <comment>\"{$item['suggested_tag']}\"</comment>");
+            $this->newLine();
         }
     }
 
@@ -249,12 +281,42 @@ class CheckAtomicCacheCommand extends Command
     }
 
     /**
-     * Clean and format related tags, ensuring clean placeholders for unpersisted keys.
+     * Clean and format related tags, extracting declared parent relations and custom related tags.
      */
     protected function extractRelatedTags(Model $instance): array
     {
         $related = [];
 
+        // 1. Extract declared parent relations ($cacheTouches, $clearsRelations, $cacheParents) safely via reflection
+        $configuredParents = $this->getDeclaredParentRelations($instance);
+        $childTable = $instance->getTable();
+
+        foreach ($configuredParents as $relationName) {
+            if (!is_string($relationName) || trim($relationName) === '') {
+                continue;
+            }
+
+            $relationName = trim($relationName);
+
+            if (method_exists($instance, $relationName)) {
+                try {
+                    $ref = new \ReflectionMethod($instance, $relationName);
+                    if ($ref->getNumberOfRequiredParameters() === 0) {
+                        $relation = $instance->{$relationName}();
+                        if ($relation instanceof \Illuminate\Database\Eloquent\Relations\BelongsTo
+                            && !$relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo) {
+                            $parentTable = $relation->getRelated()->getTable();
+                            $related[] = "{$parentTable}:{id}:{$childTable}";
+                            $related[] = "{$parentTable}:{id}";
+                        }
+                    }
+                } catch (\Throwable) {
+                    // Safe fallback
+                }
+            }
+        }
+
+        // 2. Extract legacy related tags
         if (property_exists($instance, 'relatedCacheTags') && is_array($instance->relatedCacheTags)) {
             $related = array_merge($related, $instance->relatedCacheTags);
         }
@@ -266,13 +328,100 @@ class CheckAtomicCacheCommand extends Command
         $cleaned = [];
         foreach ($related as $tag) {
             if (is_string($tag)) {
-                // If tag ends with trailing colon due to uninstantiated foreign key, replace with placeholder
                 $formatted = preg_replace('/:+$/', ':{id}', trim($tag));
                 $cleaned[] = str_replace('::', ':{id}:', $formatted);
             }
         }
 
         return array_values(array_unique(array_filter($cleaned)));
+    }
+
+    /**
+     * Inspect model for BelongsTo relationships that are not linked to cache invalidation.
+     */
+    protected function inspectModelBelongsToAdvisories(string $class, Model $instance, array $existingRelatedTags): array
+    {
+        $advisories = [];
+        $refClass = new ReflectionClass($class);
+        $childTable = $instance->getTable();
+
+        $configuredParents = $this->getDeclaredParentRelations($instance);
+
+        foreach ($refClass->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+            // Only inspect methods declared directly on user models
+            if ($method->class === Model::class || $method->class === \Illuminate\Database\Eloquent\Model::class) {
+                continue;
+            }
+
+            if ($method->getNumberOfRequiredParameters() > 0) {
+                continue;
+            }
+
+            $methodName = $method->getName();
+
+            // Skip if already declared in cacheTouches / clearsRelations / cacheParents
+            if (in_array($methodName, $configuredParents, true)) {
+                continue;
+            }
+
+            try {
+                $relation = $instance->{$methodName}();
+
+                if ($relation instanceof \Illuminate\Database\Eloquent\Relations\BelongsTo
+                    && !$relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo) {
+
+                    $foreignKey = $relation->getForeignKeyName();
+                    $parentModel = $relation->getRelated();
+                    $parentTable = $parentModel->getTable();
+                    $parentClass = class_basename($parentModel);
+
+                    // Check if already covered by custom string tag
+                    $alreadyHandled = false;
+                    foreach ($existingRelatedTags as $existing) {
+                        if (str_starts_with($existing, "{$parentTable}:")) {
+                            $alreadyHandled = true;
+                            break;
+                        }
+                    }
+
+                    if (!$alreadyHandled) {
+                        $advisories[] = [
+                            'model' => $class,
+                            'relation' => $methodName,
+                            'parent_class' => $parentClass,
+                            'foreign_key' => $foreignKey,
+                            'parent_table' => $parentTable,
+                            'suggested_code' => "protected array \$cacheTouches = ['{$methodName}'];",
+                            'suggested_tag' => "{$parentTable}:{\$this->{$foreignKey}}:{$childTable}",
+                        ];
+                    }
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $advisories;
+    }
+
+    /**
+     * Safely extract declared parent relations from protected/public model properties using reflection.
+     */
+    protected function getDeclaredParentRelations(Model $instance): array
+    {
+        $ref = new ReflectionClass($instance);
+
+        foreach (['cacheTouches', 'clearsRelations', 'cacheParents'] as $prop) {
+            if ($ref->hasProperty($prop)) {
+                $property = $ref->getProperty($prop);
+                $value = $property->getValue($instance);
+                if (is_array($value)) {
+                    return $value;
+                }
+            }
+        }
+
+        return [];
     }
 
     /**

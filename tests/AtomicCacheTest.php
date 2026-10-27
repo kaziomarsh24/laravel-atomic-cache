@@ -735,6 +735,7 @@ class AtomicCacheTest extends TestCase
         $decoded = json_decode($jsonOutput, true);
         $this->assertIsArray($decoded);
         $this->assertArrayHasKey('health_score', $decoded);
+        $this->assertArrayHasKey('advisories', $decoded);
     }
 
     public function test_normalize_tags_handles_numeric_and_nested_arrays(): void

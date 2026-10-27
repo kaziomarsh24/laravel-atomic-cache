@@ -655,6 +655,79 @@
     <span class="token-keyword">protected</span> <span class="token-keyword">array</span> <span class="token-variable">$relatedCacheTags</span> <span class="token-operator">=</span> [<span class="token-string">'catalog'</span>, <span class="token-string">'home_feed'</span>];
 }</code></pre>
                 </div>
+
+                <div class="mt-8 mb-4">
+                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                        Declarative Parent Invalidation (<code class="text-blue-600 dark:text-blue-400 font-mono text-sm">$cacheTouches</code>)
+                    </h3>
+                    <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-3">
+                        Just like Laravel's native <code class="font-mono">$touches = ['store'];</code>, you can link parent relationships declaratively. When an order is created, modified, or restored, AtomicCache automatically calculates and flushes the parent store's cache without manual string construction or typo risks:
+                    </p>
+                </div>
+
+                <div class="relative group my-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2 border-b border-slate-200/80 dark:border-zinc-800 text-xs font-mono text-slate-500 dark:text-zinc-400 bg-slate-100/50 dark:bg-zinc-800/40">
+                        <span>app/Models/Order.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13.5px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-keyword">use</span> <span class="token-class">Illuminate\Database\Eloquent\Relations\BelongsTo</span>;
+<span class="token-keyword">use</span> <span class="token-class">KaziOmar\AtomicCache\Traits\AutoClearsCache</span>;
+
+<span class="token-keyword">class</span> <span class="token-class">Order</span> <span class="token-keyword">extends</span> <span class="token-class">Model</span>
+{
+    <span class="token-keyword">use</span> <span class="token-class">AutoClearsCache</span>;
+
+    <span class="token-comment">// Automatically flushes parent store caches on commit (supports $cacheTouches, $clearsRelations, or $cacheParents)</span>
+    <span class="token-keyword">protected</span> <span class="token-keyword">array</span> <span class="token-variable">$cacheTouches</span> <span class="token-operator">=</span> [<span class="token-string">'store'</span>];
+
+    <span class="token-keyword">public</span> <span class="token-keyword">function</span> <span class="token-function">store</span>()<span class="token-operator">:</span> <span class="token-class">BelongsTo</span>
+    {
+        <span class="token-keyword">return</span> <span class="token-variable">$this</span><span class="token-operator">-&gt;</span><span class="token-function">belongsTo</span>(<span class="token-class">Store</span><span class="token-operator">::</span><span class="token-keyword">class</span>);
+    }
+}</code></pre>
+                </div>
+
+                <div class="my-5 p-4 rounded-r-lg border-l-4 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong class="text-slate-900 dark:text-white font-semibold">Dirty Foreign Key &amp; Ghost Data Protection:</strong> If an order is transferred from Store #1 to Store #2 (<code>$order-&gt;store_id = 2</code>), AtomicCache tracks original model attributes and automatically invalidates cache tags for <strong>both</strong> the former store (#1) and the new store (#2).
+                </div>
+
+                <!-- Cheat Sheet Table -->
+                <div class="my-6 overflow-hidden rounded-lg border border-slate-200 dark:border-zinc-800 text-sm">
+                    <div class="bg-slate-100/70 dark:bg-zinc-800/60 px-4 py-2.5 font-semibold text-slate-900 dark:text-white border-b border-slate-200 dark:border-zinc-800">
+                        🏷️ Cache Key vs Cache Tag Cheat-Sheet
+                    </div>
+                    <table class="w-full text-left divide-y divide-slate-200 dark:divide-zinc-800">
+                        <thead class="bg-slate-50 dark:bg-zinc-900 text-xs font-semibold uppercase text-slate-500 dark:text-zinc-400">
+                            <tr>
+                                <th class="px-4 py-2.5">What are you caching?</th>
+                                <th class="px-4 py-2.5">Service Cache Tag</th>
+                                <th class="px-4 py-2.5">Model Declaration</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-zinc-800/60 font-mono text-xs">
+                            <tr>
+                                <td class="px-4 py-2.5 font-sans font-medium text-slate-900 dark:text-white">All Products List</td>
+                                <td class="px-4 py-2.5 text-blue-600 dark:text-blue-400">['products']</td>
+                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">use AutoClearsCache;</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-2.5 font-sans font-medium text-slate-900 dark:text-white">Single Product by ID</td>
+                                <td class="px-4 py-2.5 text-blue-600 dark:text-blue-400">['products:5', 'products']</td>
+                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">use AutoClearsCache;</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-2.5 font-sans font-medium text-slate-900 dark:text-white">Store's Orders List</td>
+                                <td class="px-4 py-2.5 text-blue-600 dark:text-blue-400">['stores:5:orders', 'stores:5']</td>
+                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">$cacheTouches = ['store'];</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-2.5 font-sans font-medium text-slate-900 dark:text-white">Category's Products</td>
+                                <td class="px-4 py-2.5 text-blue-600 dark:text-blue-400">['categories:3:products', 'categories:3']</td>
+                                <td class="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">$cacheTouches = ['category'];</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </section>
 
             <!-- Section 11: Scenario 5 - Service Layer Architecture -->
