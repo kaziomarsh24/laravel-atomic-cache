@@ -432,8 +432,11 @@
                             <pre class="p-4 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// Warning: Mass query builder updates do not fire Eloquent model events:</span>
 <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'category_id'</span>, <span class="token-number">5</span>)<span class="token-operator">-&gt;</span><span class="token-function">update</span>([<span class="token-string">'status'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'archived'</span>]);
 
-<span class="token-comment">// Solution: Clear the model table tag explicitly:</span>
-<span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">clearTags</span>([<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>]); <span class="token-comment">// or AtomicCache::clearTags(['products']);</span></code></pre>
+<span class="token-comment">// Solution 1: Use the model's static flush helper:</span>
+<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">flushCache</span>();
+
+<span class="token-comment">// Solution 2: Clear the model table tag via facade:</span>
+<span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">clearCollection</span>(<span class="token-string">'products'</span>); <span class="token-comment">// or AtomicCache::clearTags([Product::class]);</span></code></pre>
                             <button onclick="copyCode(this)" class="absolute top-2.5 right-2.5 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
                         </div>
                     </div>
@@ -751,7 +754,7 @@
                 </div>
 
                 <div class="my-4 p-4 rounded-r-lg border-l-4 border-amber-500 bg-amber-50/60 dark:bg-amber-950/20 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
-                    <strong>Note:</strong> AutoClearsCache listens to model <code>created</code>, <code>updated</code> (including <code>$model-&gt;decrement()</code> / <code>$model-&gt;increment()</code>), and <code>deleted</code> events. Only direct database mass queries that bypass Eloquent models entirely (e.g. <code>DB::table('products')-&gt;decrement()</code> or <code>Product::where(...)-&gt;update()</code>) require manually calling <code>AtomicCache::clearTags(['products'])</code>.
+                    <strong>Note:</strong> AutoClearsCache listens to model <code>created</code>, <code>updated</code> (including <code>$model-&gt;decrement()</code> / <code>$model-&gt;increment()</code>), and <code>deleted</code> events. Only direct database mass queries that bypass Eloquent models entirely (e.g. <code>DB::table('products')-&gt;decrement()</code> or <code>Product::where(...)-&gt;update()</code>) require manually calling <code>Product::flushCache()</code> or <code>AtomicCache::clearCollection('products')</code>.
                 </div>
             </section>
 

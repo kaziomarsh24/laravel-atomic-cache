@@ -64,6 +64,24 @@ trait AutoClearsCache
     }
 
     /**
+     * Clear caches for this model instance (Expressive alias for clearModelCacheOnCommit).
+     */
+    public function clearCache(): void
+    {
+        $this->clearModelCacheOnCommit();
+    }
+
+    /**
+     * Statically flush all collection and table-level caches for this model.
+     * Ideal for manual invalidation after bulk updates, mass deletes, or direct DB queries.
+     */
+    public static function flushCache(): bool
+    {
+        $instance = new static();
+        return AtomicCache::clearCollection($instance->getTable());
+    }
+
+    /**
      * Resolve all cache tags that should be invalidated for this model instance.
      */
     public function resolveCacheTagsToClear(): array

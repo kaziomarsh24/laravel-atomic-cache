@@ -6,25 +6,18 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%20to%208.5-777BB4.svg?style=flat-square)](https://php.net)
 [![License](https://img.shields.io/packagist/l/thekaziomar/laravel-atomic-cache.svg?style=flat-square)](https://packagist.org/packages/thekaziomar/laravel-atomic-cache)
 
-> ### Hate cache invalidation bugs? Tired of managing cache keys?
-> **What if caching in Laravel was just 2 lines of code with zero configuration?**
->
-> 1. In your Model: `use AutoClearsCache;`
-> 2. In your Query: `Product::where('status', 'active')->atomicCache();`
->
-> *Done. No cache keys to invent. No observers to register. Automatically cleared on DB commit. Zero crashes on local dev without Redis.*
-
-**Laravel Atomic Cache** is an enterprise-grade caching engine for Laravel. It eliminates cache stampedes (dogpiling) using atomic distributed locks, auto-compresses large payloads by up to 70–80% (depending on payload entropy), auto-partitions mega datasets across driver-safe chunks, brings zero-crash virtual tagging to File and Database drivers, and guarantees transaction-safe model invalidation (`DB::afterCommit`).
+> ### High-Performance, Stampede-Proof Caching Engine for Laravel
+> Eliminates cache stampedes using atomic distributed locks, auto-compresses large payloads (>50KB) by 70–80%, auto-partitions mega datasets across driver-safe chunks, brings zero-crash virtual tagging to File and Database drivers, and guarantees transaction-safe model invalidation (`DB::afterCommit`).
 
 ```php
 use App\Models\Product;
 use KaziOmar\AtomicCache\Facades\AtomicCache;
 
-// 1. Zero-Key Query Caching: auto-generates key, auto-tags table, auto-clears on DB commit
-$featured = Product::where('status', 'active')->latest()->atomicCache(3600);
+// 1. Stampede Protection: 1,000 concurrent requests only run 1 query; others wait & read
+$report = AtomicCache::rememberWithLock('monthly_report', 3600, fn() => Report::generate());
 
-// 2. Cache Stampede Protection: 1,000 concurrent requests only run 1 query; others wait & read
-$report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::generate());
+// 2. Transaction-Safe Zero-Key Query Caching: auto-fingerprints SQL & auto-clears on commit
+$featured = Product::where('status', 'active')->latest()->atomicCache(3600);
 ```
 
 ---
@@ -32,34 +25,44 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 ## Table of Contents
 
 - [Why Laravel Atomic Cache?](#why-laravel-atomic-cache)
-- [When NOT to Cache & Known Limitations](#when-not-to-cache--known-limitations)
-  - [Architectural Limitations & Gotchas](#architectural-limitations--gotchas)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quickstart in 10 Seconds (Zero-Config Guide)](#quickstart-in-10-seconds-zero-config-guide)
-- [Core Features & Usage](#core-features--usage)
-  - [1. Basic Caching](#1-basic-caching)
-  - [2. Stampede Protection (rememberWithLock)](#2-stampede-protection-rememberwithlock)
-  - [3. Auto Payload Compression (Gzip)](#3-auto-payload-compression-gzip)
-  - [4. Transparent Chunking (Large Datasets & Collections)](#4-transparent-chunking-large-datasets--collections)
-  - [5. Write Deduplication (Cache DNA)](#5-write-deduplication-cache-dna)
-  - [6. Virtual Tagging Engine (File & Database Fallback)](#6-virtual-tagging-engine-file--database-fallback)
-  - [7. Cache TTL Jitter (Thundering Herd Prevention)](#7-cache-ttl-jitter-thundering-herd-prevention)
-  - [8. User-Scoped Caching (rememberForUser)](#8-user-scoped-caching-rememberforuser)
-  - [9. Fluent Chainable Builder](#9-fluent-chainable-builder)
-  - [10. Blade Fragment Caching](#10-blade-fragment-caching)
-  - [11. Artisan CLI Diagnostics & Benchmark](#11-artisan-cli-diagnostics--benchmark)
-  - [12. Cache Clearing Command](#12-cache-clearing-command)
-  - [13. Eloquent & DB Query Macros (Zero-Key Caching)](#13-eloquent--db-query-macros-zero-key-caching)
-  - [14. Type-Safe Model Tags](#14-type-safe-model-tags)
-  - [15. Model Audit & Invalidation Inspector](#15-model-audit--invalidation-inspector)
-- [Eloquent Model Lifecycle (AutoClearsCache)](#eloquent-model-lifecycle-autoclearscache)
-- [Service & Repository Layer (HasAtomicCache)](#service--repository-layer-hasatomiccache)
-  - [Safe Argument Normalization](#safe-argument-normalization)
-  - [Automatic Pagination & Filter Isolation](#automatic-pagination--filter-isolation-with-smart-tracking-sanitization)
-- [Real-World Example: E-Commerce Store](#real-world-example-e-commerce-store)
-- [Configuration Reference](#configuration-reference)
+- [Requirements & Installation](#requirements--installation)
+- [Quickstart in 10 Seconds](#quickstart-in-10-seconds)
+- [Architectural Philosophy: Core-First Caching](#architectural-philosophy-core-first-caching)
+- [Layer 1: The Core Caching Engine (`AtomicCache::`)](#layer-1-the-core-caching-engine-atomiccache)
+  - [1.1 Basic Caching](#11-basic-caching)
+  - [1.2 Stampede Protection (`rememberWithLock`)](#12-stampede-protection-rememberwithlock)
+  - [1.3 Virtual Tagging Engine (Native & Non-Taggable Stores)](#13-virtual-tagging-engine-native--non-taggable-stores)
+  - [1.4 Manual Cache Invalidation Methods](#14-manual-cache-invalidation-methods)
+  - [1.5 Automatic Payload Compression (Gzip)](#15-automatic-payload-compression-gzip)
+  - [1.6 Transparent Chunking (Mega Datasets & Collections)](#16-transparent-chunking-mega-datasets--collections)
+  - [1.7 Cache TTL Jitter (Thundering Herd Variance)](#17-cache-ttl-jitter-thundering-herd-variance)
+  - [1.8 User-Scoped Caching (`rememberForUser`)](#18-user-scoped-caching-rememberforuser)
+  - [1.9 Write Deduplication (Cache DNA)](#19-write-deduplication-cache-dna)
+  - [1.10 Optimistic Concurrency Control (OCC)](#110-optimistic-concurrency-control-occ)
+  - [1.11 Self-Healing Engine](#111-self-healing-engine)
+- [Layer 2: Eloquent Model Lifecycle (`AutoClearsCache`)](#layer-2-eloquent-model-lifecycle-autoclearscache)
+  - [2.1 Automatic Invalidation on `DB::afterCommit`](#21-automatic-invalidation-on-dbaftercommit)
+  - [2.2 Declarative Parent Invalidation (`$cacheParents`)](#22-declarative-parent-invalidation-cacheparents)
+  - [2.3 Model-Level Manual Cache Flushing](#23-model-level-manual-cache-flushing)
+  - [2.4 Critical Rules & What Breaks Model Auto-Invalidation](#24-critical-rules--what-breaks-model-auto-invalidation)
+- [Layer 3: Query Builder Macros (`->atomicCache()`)](#layer-3-query-builder-macros-atomiccache)
+  - [3.1 Zero-Key Query & First Record Caching](#31-zero-key-query--first-record-caching)
+  - [3.2 Critical Rules & What Breaks Query Macros](#32-critical-rules--what-breaks-query-macros)
+- [Layer 4: Service & Repository Layer (`HasAtomicCache`)](#layer-4-service--repository-layer-hasatomiccache)
+  - [4.1 Automatic Pagination & Filter Isolation (`rememberCollection`)](#41-automatic-pagination--filter-isolation-remembercollection)
+  - [4.2 Single Item Caching (`rememberItem`)](#42-single-item-caching-rememberitem)
+  - [4.3 Query Parameter Sanitization & Whitelisting](#43-query-parameter-sanitization--whitelisting)
+  - [4.4 DoS & Cache Poisoning Limits](#44-dos--cache-poisoning-limits)
+  - [4.5 Critical Rules & What Breaks Service Caching](#45-critical-rules--what-breaks-service-caching)
+- [Layer 5: Blade Fragment Caching (`@atomicCache`)](#layer-5-blade-fragment-caching-atomiccache)
+  - [5.1 Usage & Tagging](#51-usage--tagging)
+  - [5.2 Critical Rules & What Breaks Blade Caching](#52-critical-rules--what-breaks-blade-caching)
+- [Layer 6: CLI Diagnostics & Auditing](#layer-6-cli-diagnostics--auditing)
+  - [6.1 Model Architecture Auditor (`atomic-cache:check`)](#61-model-architecture-auditor-atomic-cachecheck)
+  - [6.2 Performance Benchmark CLI (`atomic-cache:bench`)](#62-performance-benchmark-cli-atomic-cachebench)
+  - [6.3 Safe Cache Clearing CLI (`atomic-cache:clear`)](#63-safe-cache-clearing-cli-atomic-cacheclear)
 - [Driver Compatibility Matrix](#driver-compatibility-matrix)
+- [Configuration Reference](#configuration-reference)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
 - [Upgrade Guide](#upgrade-guide)
 - [Testing](#testing)
@@ -74,105 +77,21 @@ $report = AtomicCache::rememberWithLock('monthly_report', fn() => Report::genera
 | **Stampede Protection** | No (All concurrent requests hit DB) | **Atomic Lock** (1 worker computes, others wait & read) |
 | **Large Payload Size** | Raw uncompressed serialization | **Auto Gzip** (>50KB cuts Redis RAM by 70–80%) |
 | **Mega Datasets** | Fails on 1MB Memcached / Redis freeze | **Transparent Chunking** (splits safely, preserves keys) |
-| **Redundant Writes** | Every put hits storage/network | **Write Deduplication** (skips re-compression and chunk re-splitting) |
+| **Redundant Writes** | Every put hits storage/network | **Write Deduplication** (skips re-compression & chunk re-splitting) |
 | **Driver Tag Support** | Crashes on File/Database stores | **Virtual Tagging** (works across all stores without Redis) |
 | **Corrupted Data** | Throws crash exception to user | **Self-Healing** (cleans key, regenerates silently) |
 | **Simultaneous Expiry** | All keys expire in same second | **TTL Jitter** (random variance prevents herd spikes) |
 | **Model Invalidation** | Fragile observers before commit | **DB::afterCommit** (prevents transaction race conditions) |
-| **Query & Filter Caching** | Manual key hashing required | **Zero-Key Macros & Service Isolation** (automatic hashing & tagging) |
-| **Diagnostics & Audit** | Manual DIY logging | **Artisan Benchmark CLI** (`atomic-cache:bench`) |
+| **Query Caching** | Manual key hashing required | **Zero-Key Macros** (auto SQL + eager load fingerprinting) |
+| **Architecture Audit** | Manual DIY logging | **Artisan Doctor CLI** (`atomic-cache:check`) |
 
 ---
 
-## When NOT to Cache & Known Limitations
-
-Caching is not suitable for every workload. To maintain system reliability, avoid caching in these scenarios:
-
-- **Real-Time WebSockets & Chat Messages:** Chat messages (`ChatMessage`) should be pushed directly via Laravel Reverb or Pusher. Caching them creates unnecessary memory churn without read benefits.
-- **High-Frequency GPS & Telemetry:** Live driver/rider coordinates streaming every few seconds belong in Redis Pub/Sub, Kafka, or ClickHouse, not application-level cache.
-- **Financial Transactions & Stock Deductions:** Real-time wallet balances, inventory decrements, and audit logs require pessimistic database row locks (`lockForUpdate()`) to guarantee absolute transactional consistency.
-
----
-
-### Architectural Limitations & Gotchas
-
-#### 1. Eloquent Mass Operations (Bypasses Model Events)
-When performing direct database queries or Eloquent query builder batch mutations, Laravel **does not fire model events** (`saved`, `updated`, `deleted`):
-
-```php
-// Warning: Direct query builder updates do not fire Eloquent model events:
-Product::where('category_id', 5)->update(['status' => 'archived']);
-Product::where('expired', true)->delete();
-DB::table('products')->where('id', 1)->delete();
-
-// AutoClearsCache cannot detect query-level mutations because no events are fired.
-
-// Solution 1: Explicitly clear the table tags right after mass operations:
-AtomicCache::clearTags([Product::class]); // or AtomicCache::clearTags(['products']);
-
-// Solution 2: Iterate records if you need model event hooks & parent cascade:
-Product::where('category_id', 5)->get()->each->update(['status' => 'archived']);
-```
-
-#### 2. Pagination with Query Macros (`atomicCache()`)
-The `->atomicCache()` query macro is a terminal execution that immediately executes `->get()` and returns an Eloquent `Collection` (while `->atomicCacheFirst()` calls `->first()`).
-
-```php
-// Note: Do not chain ->paginate() after ->atomicCache() (returns a Collection):
-// Product::where('status', 'active')->atomicCache()->paginate(15); 
-// Error: Call to undefined method Illuminate\Database\Eloquent\Collection::paginate()
-
-// Recommended: Service layer caching with HasAtomicCache
-// rememberCollection() automatically isolates request query strings & page numbers:
-class ProductService
-{
-    use HasAtomicCache;
-
-    public function getActiveProducts()
-    {
-        return $this->rememberCollection('active', fn() => Product::where('status', 'active')->paginate(15), 3600);
-    }
-}
-
-// Alternative: Custom key caching via AtomicCache facade (include parameters that alter the result):
-$page = request()->get('page', 1);
-$queryHash = md5(serialize(request()->only(['page', 'per_page', 'sort', 'filter'])));
-$products = AtomicCache::tags([Product::class])
-    ->remember("products:active:{$queryHash}", 3600, function () {
-        return Product::where('status', 'active')->paginate(15);
-    });
-```
-
-#### 3. Invalidation Granularity on Write-Heavy Tables
-`AutoClearsCache` operates on table-level invalidation tags (e.g. `products`, `orders`).
-- **Read-Heavy Tables (Recommended):** Catalogues, products, categories, settings, articles, and profiles maintain consistently high cache hit rates without frequent invalidations.
-- **Write-Heavy Tables:** Tables with continuous high-volume writes (e.g., live activity logs, high-frequency stock tickers, IoT sensor logs) will repeatedly invalidate the table tag.
-- **Best Practice:** For write-heavy tables, do not attach broad table tags. Instead, cache single records with targeted unique keys:
-  ```php
-  // Targeted record caching without clearing the whole table:
-  AtomicCache::remember("user:metric:{$userId}", 300, fn() => ...);
-  ```
-
-#### 4. Raw SQL & Subqueries in Query Macros
-The `atomicCache()` macro automatically inspects standard `join()` and `leftJoin()` methods to attach join table tags. However, raw SQL subqueries (e.g. `whereRaw()`, `whereExists()`) are not dynamically parsed into tags.
-- **Best Practice:** Pass additional table tags explicitly when using raw SQL joins or subqueries:
-  ```php
-  Order::query()
-      ->whereRaw('exists (select 1 from customers where customers.id = orders.customer_id)')
-      ->atomicCache(3600, tags: ['customers']);
-  ```
-
----
-
-## Requirements
+## Requirements & Installation
 
 - **PHP:** `8.2`, `8.3`, `8.4`, or `8.5`
 - **Laravel Framework:** `10.x`, `11.x`, `12.x`, or `13.x`
-- **PHP Extensions:** `ext-zlib` (optional for compression, built-in on 99% of PHP installs)
-
----
-
-## Installation
+- **PHP Extensions:** `ext-zlib` (optional for Gzip compression, enabled by default in 99% of PHP installs)
 
 Install via Composer:
 
@@ -180,7 +99,7 @@ Install via Composer:
 composer require thekaziomar/laravel-atomic-cache
 ```
 
-Publish the optional configuration file:
+Publish configuration (optional):
 
 ```bash
 php artisan vendor:publish --tag="atomic-cache-config"
@@ -188,9 +107,9 @@ php artisan vendor:publish --tag="atomic-cache-config"
 
 ---
 
-## Quickstart in 10 Seconds (Zero-Config Guide)
+## Quickstart in 10 Seconds
 
-Don't want to think about cache keys, tag names, or redis commands? Just follow these **3 simple steps**:
+Follow these **3 simple steps** to get production-grade caching immediately:
 
 ### Step 1: Add the Trait to your Model
 ```php
@@ -201,7 +120,7 @@ use KaziOmar\AtomicCache\Traits\AutoClearsCache;
 
 class Product extends Model
 {
-    use AutoClearsCache; // Auto-invalidates queries when saved/deleted on commit
+    use AutoClearsCache; // Clears related caches on commit when saved or deleted
 }
 ```
 
@@ -209,23 +128,52 @@ class Product extends Model
 ```php
 // In any Controller, Action, or Livewire component:
 $products = Product::where('status', 'active')->latest()->atomicCache(3600);
-$singleProduct = Product::where('slug', $slug)->atomicCacheFirst(3600);
+$product = Product::where('slug', $slug)->atomicCacheFirst(3600);
 ```
-*No cache keys to remember! Automatically named, automatically tagged with table, and automatically cleared on database commit.*
 
-### Step 3: Run the Model Auditor
+### Step 3: Run the Architecture Audit
 ```bash
 php artisan atomic-cache:check
 ```
-*Inspect your application to verify which models have automatic caching enabled.*
 
 ---
 
-## 🚀 Core Features & Usage
+## Architectural Philosophy: Core-First Caching
 
-### 1. Basic Caching
+Laravel Atomic Cache is organized into a clean **Core-First architecture**:
 
-Works seamlessly like native Laravel cache, supporting flexible parameter ordering:
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Optional Syntactic Sugar                          │
+│   Query Macros           Service Trait            Blade Directives     │
+│  (->atomicCache())     (HasAtomicCache)           (@atomicCache)       │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────▼────────────────────────────────────┐
+│                  Eloquent Model Lifecycle Layer                        │
+│                         (AutoClearsCache)                              │
+│         created / updated / deleted / restored  --> DB::afterCommit     │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────▼────────────────────────────────────┐
+│                   The Core Engine (AtomicCache::)                      │
+│   Distributed Locks  •  Virtual Tags  •  Gzip Compression  •  OCC      │
+│   Transparent Chunking  •  Self-Healing  •  TTL Jitter  •  Cache DNA   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+The **Core Engine (`AtomicCache::`)** is completely self-contained, fully explicit, and rock-solid. While query macros and traits provide convenient shortcuts, you can build your entire application directly with the Core Engine for 100% predictable control.
+
+---
+
+## Layer 1: The Core Caching Engine (`AtomicCache::`)
+
+The `AtomicCache` facade provides manual, high-performance caching with enterprise concurrency controls.
+
+### 1.1 Basic Caching
+
+#### How it works:
+Works intuitively like native Laravel cache, supporting flexible parameter ordering (both `$ttl, $callback` and `$callback, $ttl`):
 
 ```php
 use KaziOmar\AtomicCache\Facades\AtomicCache;
@@ -238,339 +186,213 @@ $posts = AtomicCache::remember('posts.all', 3600, function () {
 // Alternative signature: remember($key, $callback, $ttl)
 $posts = AtomicCache::remember('posts.all', fn() => Post::all(), 3600);
 
-// Global helper shortcut
-$posts = atomic_cache('posts.all', fn() => Post::all(), 3600);
+// Standard CRUD operations:
+AtomicCache::put('site_settings', $settings, 86400); // Store directly
+$value = AtomicCache::get('site_settings');          // Retrieve
+$exists = AtomicCache::has('site_settings');         // Check existence
+$val = AtomicCache::pull('site_settings');           // Retrieve and delete
+AtomicCache::forget('site_settings');                // Delete single key
 ```
 
-#### Understanding the Parameters:
+#### What will break it / What causes it not to work properly:
+- **Passing a non-positive TTL (`0` or negative number):** Calling `AtomicCache::put('key', $value, 0)` will **not** cache the item; it immediately executes `forget('key')` and deletes the item.
+- **Passing a past `DateTimeInterface`:** Passing a Carbon date in the past will calculate a negative TTL and immediately delete the key.
+- **Un-serializable callback returns:** If your closure returns an open resource (like a `curl` handle, file pointer, or `PDO` instance), PHP serialization will fail and store an empty or corrupted entry.
 
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| **`$key`** | `string` | **Unique Cache Identifier** in your cache store (e.g. `'posts.all'`, `'home.banners'`). Using `{resource}.{action}` or `{module}:{query}` is the industry standard convention to prevent key collisions and enable easy searching in Redis (`redis-cli KEYS "atomic:posts.*"`). |
-| **`$ttl`** | `int` | **Time-To-Live in seconds** (e.g. `3600` = 1 hour, `86400` = 1 day). Specifies how long the value remains cached. If omitted, uses `config('atomic-cache.default_ttl', 3600)`. |
-| **`$callback`**| `Closure` | **Data Producer Callback**. Executes only when the cache is empty or expired. The returned value is automatically compressed (if >50KB), stored in cache, and returned. |
+---
+
+### 1.2 Stampede Protection (`rememberWithLock`)
+
+#### How it works:
+When an expensive cache item expires under high traffic, dozens or hundreds of concurrent requests simultaneously execute the heavy database query (known as the **Dogpiling** or **Cache Stampede** effect).
+
+`rememberWithLock` acquires an atomic distributed lock via Laravel's `LockProvider`. **Only the first process calculates the value**, while all other requests wait up to `waitSeconds` (default 5s) and read the freshly computed cache from memory using **Double-Checked Locking**:
 
 ```php
-// Standard CRUD methods:
-AtomicCache::put('key', $value, 3600);       // Store an item directly
-$val = AtomicCache::get('key', default: null); // Retrieve an item
-$exists = AtomicCache::has('key');             // Check existence
-$val = AtomicCache::pull('key');              // Retrieve and immediately delete
-AtomicCache::clear('key');                    // Delete item (alias of forget)
+$stats = AtomicCache::rememberWithLock('annual_sales_report', 86400, function () {
+    return HeavyReportingService::calculate();
+}, lockSeconds: 15, waitSeconds: 5);
 ```
 
----
-
-### 2. Stampede Protection (`rememberWithLock`)
-
-During sudden traffic surges (e.g. after a cache flush or key expiry), hundreds of requests hit your database simultaneously trying to recalculate the same data.
-
-`rememberWithLock` acquires an atomic distributed lock. **Only one process executes the query**, while concurrent requests wait up to 5 seconds and read the freshly cached result:
-
-```php
-$analytics = AtomicCache::rememberWithLock('dashboard.stats', 3600, function () {
-    return HeavyAnalyticsService::calculate();
-}, lockSeconds: 10, waitSeconds: 5);
-```
+#### What will break it / What causes it not to work properly:
+- **Using a cache store without lock support:** Drivers that do not implement `Illuminate\Contracts\Cache\LockProvider` (such as default local `file` cache without a lock provider) cannot create atomic locks. The engine safely detects this and bypasses locking, executing the callback directly.
+- **Calculation exceeding `lockSeconds`:** If your computation takes 20 seconds but `lockSeconds` is set to 10 seconds, the lock will expire prematurely while the first worker is still running, allowing waiting workers to enter and recompute. Always set `lockSeconds` higher than your maximum expected computation time.
+- **`waitSeconds` too short:** If computation takes 4 seconds but `waitSeconds` is set to 1 second, waiting requests will time out waiting for the lock and fall back to executing the query themselves.
 
 ---
 
-### 3. Auto Payload Compression (Gzip)
+### 1.3 Virtual Tagging Engine (Native & Non-Taggable Stores)
 
-Large Eloquent collections or API responses can consume gigabytes of Redis/Memcached RAM. 
-
-Whenever a cached payload exceeds **50 KB** (configurable), Atomic Cache automatically compresses it with `gzcompress`:
-- Reduces Redis/Memcached memory usage by up to **70% to 80%** (actual savings depend on payload structure and entropy).
-- Decompression is handled transparently on retrieval.
-- If payload is smaller than 50 KB, it stores without compression overhead.
-
----
-
-### 4. Transparent Chunking (Large Datasets & Collections)
-
-Storing large collections (e.g. 10,000+ items or multi-megabyte reports) in a single cache entry can freeze single-threaded Redis processes and exceed Memcached's strict 1MB limit.
-
-Atomic Cache includes **Transparent Chunking**:
-- Arrays and Collections exceeding the threshold (1,000+ items or count > chunk_size) are automatically partitioned into safe chunk keys (`{key}:__chunk__:{generation}:{i}`).
-- **Generation UUIDs (Zero Torn Reads):** Writes are published under a unique generation UUID before updating the atomic manifest pointer, completely eliminating torn-read race conditions for concurrent readers.
-- **Dynamic Byte-Size Guard (`max_bytes`):** Samples row payloads and dynamically adjusts chunk size so each chunk payload stays under 800 KB (driver-safe for Memcached's 1MB limit).
-- **Orphan Chunk Lifecycle (`clean_on_put`):** Previous generation chunks are cleaned automatically when a new chunked generation is published. On non-chunked overwrites, prior chunks expire naturally via store TTL, or can be eagerly purged by opting into `ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT=true`.
-- **Single-Roundtrip Batch Reassembly:** Chunks are retrieved simultaneously using Laravel's `many()` (Redis MGET or multi-key read on file/database drivers), avoiding sequential network round-trips.
-- **Key preservation:** Associative and sparse numeric keys remain intact upon reassembly.
-- **Auto Collection restoration:** Collections are seamlessly reconstituted as `Illuminate\Support\Collection`.
-- **Self-Healing recovery:** If an individual chunk is evicted or lost, Atomic Cache evicts the broken metadata and transparently regenerates a fresh payload without crashing your application.
-
-```php
-// Storing 25,000 records transparently splits into 25 safe chunks behind the scenes
-$dataset = AtomicCache::remember('large_report', 3600, fn() => ExportReport::all());
-```
-
----
-
-### 5. Write Deduplication (Cache DNA)
-
-Repeated writes of identical data waste CPU cycles on serialization and compression.
-
-Atomic Cache includes an optional deduplication engine (`ATOMIC_CACHE_DEDUPLICATION_ENABLED=false` by default). When enabled, it hashes content before writing (`Cache DNA`). When the identical payload is already cached with valid remaining TTL, **it skips CPU-intensive gzip compression and chunk re-splitting, refreshing the existing TTL in the store**:
-
-```php
-// With ATOMIC_CACHE_DEDUPLICATION_ENABLED=true:
-AtomicCache::put('app_config', $config, 3600); // Compressed & written to store
-AtomicCache::put('app_config', $config, 7200); // Same data -> Compression & chunk-splitting skipped, TTL extended to 7200s!
-```
-
----
-
-### 6. Virtual Tagging Engine (File & Database Fallback)
-
-In Laravel, calling `Cache::tags(['users'])` on `file` or `database` cache drivers crashes with `BadMethodCallException: This cache store does not support tagging.`
+#### How it works:
+In standard Laravel, calling `Cache::tags(['products'])` on `file` or `database` cache drivers crashes with a fatal exception: `This cache store does not support tagging.`
 
 Atomic Cache introduces a **Virtual Tag Versioning Engine**:
-- On Redis / Memcached: Uses native high-performance driver tags.
-- On File / Database / SQLite / Array: Tracks atomic UUID version tokens per tag in the cache store.
-- When `clearTags(['users'])` is called, it generates a fresh UUID token in the store atomically.
-- Subsequent reads experience an instant cache miss in 0ms without running slow directory scans or SQL deletes. *(Note: On Redis/Memcached, orphan entries expire via driver TTL. On local file driver, orphan cache files remain on disk until their TTL expires or until `artisan cache:clear` / prune is run).*
+- On **Redis / Memcached**: Uses native driver tags for maximum raw performance.
+- On **File / Database / SQLite / Array**: Embeds atomic UUID version tokens into cache keys (`{prefix}:{key}:vt:{hash}`).
+- When `AtomicCache::clearTags(['products'])` is called, it increments/replaces the virtual tag UUID in 0ms. All cached entries under that tag instantly experience a cache miss without requiring slow file directory traversals or heavy SQL deletes.
 
 ```php
-// Fluent tag flush (standard Laravel syntax)
-AtomicCache::tags(['orders'])->flush();
+// Tagging reads and writes (works identically on Redis, File, or Database):
+$catalog = AtomicCache::tags(['products', 'categories'])
+    ->remember('catalog_active', 3600, fn() => Product::active()->get());
 
-// Flush specific tags directly
-AtomicCache::flushTags(['dashboard', 'reports']);
-
-// Invalidate a single model item: flushes tag "users:42"
-AtomicCache::forgetItem('users', 42); // alias: clearItem()
-
-// Invalidate an entire collection: flushes tag "users"
-AtomicCache::flushCollection('users'); // alias: clearCollection()
+// Flushing all items under one or more tags:
+AtomicCache::clearTags(['products']);
+// Alias matching Laravel nomenclature:
+AtomicCache::flushTags(['products', 'categories']);
 ```
+
+#### What will break it / What causes it not to work properly:
+- **Calling Laravel's native `Cache::tags()` on non-taggable stores:** Remember to always call `AtomicCache::tags()`. Calling Laravel's built-in `Cache::tags()` directly will still crash on `file` or `database` drivers.
+- **File driver disk accumulation:** On the `file` driver, virtual tags invalidate entries logically in 0ms (subsequent reads miss immediately). However, the old serialized files remain on disk until their TTL expires or until `php artisan cache:clear` is run.
 
 ---
 
-### 7. Cache TTL Jitter (Thundering Herd Prevention)
+### 1.4 Manual Cache Invalidation Methods
 
-If you cache 1,000 keys for 3,600 seconds, they will all expire at the exact same microsecond, causing a sudden CPU and database spike.
-
-`withJitter` adds a small random variance (e.g. ±5%) to the TTL. The method accepts a decimal fraction (e.g. `0.05` for ±5%, or `0.10` for ±10%), whereas the `ATOMIC_CACHE_JITTER_PERCENTAGE=5` .env variable takes an integer percentage:
+#### How it works:
+When you perform operations that do not trigger automated model events (such as bulk updates or direct SQL queries), use these manual invalidation methods:
 
 ```php
-// TTL of 3600s will randomly vary between 3420s and 3780s
-AtomicCache::withJitter()->remember('feed.popular', fn() => getFeed(), 3600);
+use KaziOmar\AtomicCache\Facades\AtomicCache;
 
-// Or pass an explicit variance (e.g. 10% fraction: 0.10)
-AtomicCache::withJitter(0.10)->remember('feed.popular', fn() => getFeed(), 3600);
+// 1. Invalidate an entire collection / resource (flushes tag "products"):
+AtomicCache::clearCollection('products');
+AtomicCache::flushCollection('products');
+
+// 2. Invalidate a single resource record (flushes tag "products:42"):
+AtomicCache::clearItem('products', 42);
+AtomicCache::forgetItem('products', 42);
+
+// 3. Invalidate specific tags:
+AtomicCache::clearTags(['products', 'stores:5']);
+AtomicCache::flushTags(['homepage_featured']);
+
+// 4. Invalidate an explicit key:
+AtomicCache::forget('my_custom_cache_key');
 ```
+
+#### What will break it / What causes it not to work properly:
+- **Calling `AtomicCache::flush()` on a shared cache store:** Calling `AtomicCache::flush()` without active tags executes `flush()` on the underlying raw cache store. If your Redis store is shared with session or queue data, this will wipe user sessions! Always use `clearTags()` or `clearCollection()` instead of `flush()`.
 
 ---
 
-### 8. User-Scoped Caching (`rememberForUser`)
+### 1.5 Automatic Payload Compression (Gzip)
 
-Avoid manually concatenating `Auth::id()` into your cache keys:
+#### How it works:
+Large Eloquent collections or API responses consume megabytes of Redis/Memcached RAM. Whenever a cached payload exceeds **50 KB** (configurable), Atomic Cache automatically compresses it with `gzcompress`:
+- Reduces Redis/Memcached memory footprint by **70% to 80%**.
+- Decompression is completely transparent upon retrieval.
+- Payloads smaller than 50 KB are stored raw without compression CPU overhead.
+
+#### What will break it / What causes it not to work properly:
+- **Missing `ext-zlib` extension:** If PHP is compiled without the `zlib` extension, compression is automatically skipped and data is saved uncompressed without crashing your application.
+- **High-entropy binary data:** Payloads that are already compressed (such as JPEG images, PDF files, or zip archives) cannot be compressed further; Gzip will provide negligible reduction for them.
+
+---
+
+### 1.6 Transparent Chunking (Mega Datasets & Collections)
+
+#### How it works:
+Storing 10,000+ items or multi-megabyte collections in a single cache entry freezes Redis single-threaded loops and violates Memcached's strict 1MB key limit.
+
+Atomic Cache includes **Transparent Chunking**:
+- Arrays and Collections exceeding 1,000 items (or 800 KB estimated payload) are automatically partitioned across driver-safe chunk keys (`{key}:__chunk__:{generation}:{i}`).
+- **Generation UUIDs (Zero Torn Reads):** All chunks are published under a unique generation UUID before the manifest pointer updates atomically, preventing concurrent readers from reading partial/torn data.
+- **Dynamic 800 KB Guard:** Dynamically calculates items per chunk so individual chunk payloads never exceed 800 KB, remaining Memcached-safe.
+- **Key preservation:** Associative string keys and sparse numeric array indexes are preserved upon reassembly.
+- **Collection restoration:** Instances of `Illuminate\Support\Collection` are seamlessly reconstituted.
 
 ```php
-// Automatically scopes key to "atomic:user:{auth_id}:dashboard_nav"
-$menu = AtomicCache::rememberForUser('dashboard_nav', function () {
-    return Auth::user()->navigationMenu();
-});
-
-// Or scope to a specific user ID
-$profile = AtomicCache::rememberForUser('profile', fn() => User::find(99), userId: 99);
+// Storing 20,000 items automatically splits into 20 safe chunks behind the scenes:
+$data = AtomicCache::remember('large_export', 3600, fn() => ExportRecord::all());
 ```
+
+#### What will break it / What causes it not to work properly:
+- **Disabling chunking with Memcached:** If you set `ATOMIC_CACHE_CHUNKING_ENABLED=false` in `.env` and attempt to cache a collection larger than 1MB on Memcached, Memcached will throw a payload size exception.
+- **External key manipulation:** Manually deleting an individual `{key}:__chunk__:...` key in Redis will corrupt the chunk set. Atomic Cache's self-healing layer will detect the missing chunk, log a warning, and recompute the original data safely.
 
 ---
 
-### 9. Fluent Chainable Builder
+### 1.7 Cache TTL Jitter (Thundering Herd Variance)
 
-You can fluently combine any optimizations in a clean builder chain:
+#### How it works:
+If you cache 1,000 database items simultaneously with a fixed TTL of 3,600 seconds, all 1,000 keys expire at the exact same microsecond, causing an instant CPU spike (known as the **Thundering Herd** problem).
+
+`withJitter()` adds a small random variance (e.g. ±5%) to the TTL:
 
 ```php
-$data = AtomicCache::store('redis')
-    ->tags(['finance', 'reports'])
-    ->ttl(7200)
-    ->withLock(lockSeconds: 15, waitSeconds: 5)
-    ->withJitter(0.05)
-    ->remember('annual_revenue', function () {
-        return RevenueCalculator::compute();
-    });
+// TTL of 3600s will randomly vary between 3420s and 3780s:
+AtomicCache::withJitter(0.05)->remember('popular_feed', 3600, fn() => ...);
 ```
+
+#### What will break it / What causes it not to work properly:
+- **Passing jitter percentages greater than 50%:** The engine clamps jitter between 0% and 50% to prevent non-positive TTL calculations from deleting keys.
 
 ---
 
-### 10. Blade Fragment Caching
+### 1.8 User-Scoped Caching (`rememberForUser`)
 
-Cache expensive HTML blocks, navigation bars, or sidebar widgets directly in Blade templates:
-
-```blade
-{{-- Caches rendered HTML for 3600s, tagged with 'categories' --}}
-@atomicCache('sidebar_categories', 3600, ['categories'])
-    <div class="sidebar">
-        @foreach(\App\Models\Category::with('subcategories')->get() as $category)
-            <h3>{{ $category->name }}</h3>
-            @foreach($category->subcategories as $sub)
-                <p>{{ $sub->title }}</p>
-            @endforeach
-        @endforeach
-    </div>
-@endAtomicCache
-```
-
-> ⚠️ **Important Security & Scope Note:** Blade fragment caching is global across all visitors by default. Never cache personalized or user-specific content (such as logged-in user names, personal carts, or `@csrf` tokens) in a generic fragment block. If user-scoping is needed, append the user ID to the cache key (e.g. `@atomicCache('user_nav_' . auth()->id(), 3600)`).
-
----
-
-### 11. Artisan CLI Diagnostics & Benchmark
-
-Atomic Cache ships with an integrated performance benchmarking suite to inspect your real-world speedup and memory efficiency:
-
-```bash
-# Run benchmark on current default cache store
-php artisan atomic-cache:bench
-
-# Benchmark specific driver (e.g. redis, memcached, file, database)
-php artisan atomic-cache:bench --driver=redis --iterations=10
-
-# Export benchmark metrics as JSON
-php artisan atomic-cache:bench --format=json
-```
-
-**Example Benchmark Output:**
-```text
-Running AtomicCache Benchmark against driver [redis] (5 iterations)...
-
-+--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
-| Metric Category    | Scenario                     | Raw / Simulated Baseline          | AtomicCache Result   | Improvement / Status    |
-+--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
-| Latency / Speed    | Database Query vs Cache Hit  | 45.00 ms                          | 0.04 ms              | +99.9% Faster           |
-| Payload Size       | Large Array Gzip Compression | 95.48 KB                          | 4.13 KB              | 95.7% Memory Saved      |
-| Safe Chunking      | Large Dataset (2,500 items)  | Single raw item (Risk: 1MB limit) | 3 safe chunks        | Passed (Keys Preserved) |
-| Tag Resilience     | Non-Redis Virtual Tagging    | Native Tag Support                | Zero-Crash Emulation | Resilient (Zero Crash)  |
-+--------------------+------------------------------+-----------------------------------+----------------------+-------------------------+
-
-AtomicCache is operating optimally on [redis] driver with full stampede, compression, and chunking protection.
-```
-
-### 12. Cache Clearing Command
-
-```bash
-# Clear a specific cache tag or key
-php artisan atomic-cache:clear users
-
-# Clear all atomic cache entries (prompts for confirmation in production)
-php artisan atomic-cache:clear --all
-
-# Clear all atomic cache entries non-interactively (e.g. in CI or deployment scripts)
-php artisan atomic-cache:clear --all --force
-```
-
-> [!WARNING]
-> `--all` executes `flush()` on the configured cache store. If your cache store is shared with sessions or queue jobs, invalidate specific tags (e.g. `users`, `products`) to avoid clearing unrelated application data.
-
----
-
-### 13. Eloquent & DB Query Macros (Zero-Key Caching)
-
-Cache database queries directly off the Eloquent or Query Builder without writing or remembering cache key strings:
+#### How it works:
+Scopes the cache key to the currently authenticated user ID (`atomic:user:{id}:{key}`) or an explicit user ID:
 
 ```php
-use App\Models\Product;
+// Automatically scopes to auth()->id():
+$userMenu = AtomicCache::rememberForUser('user_menu', 3600, fn() => ...);
 
-// 1. Zero-Key Mode: auto-generates a unique key based on SQL + bindings!
-// Automatically tagged with 'products' and Product::class for auto-invalidation
-$featured = Product::where('status', 'active')->where('featured', 1)->atomicCache(3600);
-
-// 2. Custom Key Mode (Hybrid freedom):
-$bestSellers = Product::where('sales_count', '>', 100)->atomicCache('bestsellers', 7200);
-
-// 3. Single record caching:
-$product = Product::where('slug', $slug)->atomicCacheFirst(3600);
-
-// 4. Works on query relationships & DB facade too:
-$userPosts = $user->posts()->where('published', 1)->atomicCache();
-$stats = DB::table('orders')->where('status', 'completed')->atomicCache(1800);
+// Explicit user ID scoping:
+$dashboard = AtomicCache::rememberForUser('dashboard', 3600, fn() => ..., userId: 42);
 ```
 
-#### Why it's bulletproof:
-- **Zero Key Collision:** Generates deterministic fingerprint `products:query:sha256(SQL + Bindings + Model + EagerLoads)`. If query parameters or eager relations differ, keys are isolated.
-- **Automatic Join Tagging:** When queries join multiple tables (e.g. `users` join `orders`), AtomicCache automatically attaches both table tags, invalidating the cached result whenever either table changes. *(Note: Standard `join()` and `leftJoin()` methods are detected automatically; subqueries and `joinRaw()` should have additional tags passed explicitly in the `$tags` parameter).*
-- **Zero Stale Cache:** Every query is automatically tagged with the model's table. When any `Product::create()`, `$product->update()`, `$product->decrement()`, or `$product->delete()` occurs, `AutoClearsCache` automatically wipes these queries!
+#### What will break it / What causes it not to work properly:
+- **Unauthenticated guest users sharing session-less state:** If `rememberForUser()` is called when no user is logged in (`auth()->id() === null`), Atomic Cache falls back to the current session ID (`guest:{session_id}`). If sessions are disabled or uninitialized, it falls back to a global `guest` key. Do not use `rememberForUser` for guest-facing public content.
 
 ---
 
-### 14. Type-Safe Model Tags
+### 1.9 Write Deduplication (Cache DNA)
 
-Avoid typo errors and get full IDE autocomplete by passing Model classes or instances directly into `tags()`:
+#### How it works:
+When `ATOMIC_CACHE_DEDUPLICATION_ENABLED=true` is enabled in `.env`, Atomic Cache hashes the payload (`Cache DNA`) before writing. If identical content is already cached with a valid remaining TTL, **it skips CPU-intensive serialization, Gzip re-compression, and chunk re-splitting**, merely refreshing the TTL in storage.
 
-```php
-use App\Models\Product;
-use App\Models\Category;
-
-// Passing Model classes gives you full IDE autocomplete & refactoring safety:
-AtomicCache::tags([Product::class, Category::class])
-    ->remember('featured_catalog', 3600, fn() => ...);
-
-// Passing model instances automatically tags both "products:12" and "products":
-AtomicCache::tags([$product])->remember(...);
-
-// Supports numeric IDs and nested tag arrays seamlessly:
-AtomicCache::tags(['orders', 42, ['vip', 'eu']])->remember(...);
-
-// Invalidation also supports type-safe classes & IDs:
-AtomicCache::clearTags([Product::class, 42]);
-```
+#### What will break it / What causes it not to work properly:
+- **Non-deterministic payloads:** If your cached array includes dynamic timestamps like `now()` or random tokens, every payload hash will differ, bypassing deduplication benefits.
 
 ---
 
-### 15. Model Audit & Invalidation Inspector
+### 1.10 Optimistic Concurrency Control (OCC)
 
-Inspect your entire application's models, verify cache invalidation tags, and check architectural health with the built-in doctor command:
+#### How it works:
+If a heavy calculation takes 4 seconds, and during second 2 an admin updates the database (flushing the tag), writing the 4-second-old result to the cache at second 4 would overwrite the update with stale data.
 
-```bash
-# Run full model audit
-php artisan atomic-cache:check
+Atomic Cache verifies tag version identifiers **before** and **after** running the closure. If tags were modified while the closure ran, the stale write is safely **discarded**.
 
-# Filter by status: active, recommended, or exempt
-php artisan atomic-cache:check --filter=recommended
-
-# Export machine-readable report for CI/CD pipelines
-php artisan atomic-cache:check --json
-```
-
-```text
-Atomic Cache Architecture Audit
-Target Path: /var/www/html/app/Models
-
-+-----------------------------+-------------+-----------------------+------------------------------------------+
-| Model                       | Status      | Primary Invalidation  | Tags / Notes                             |
-+-----------------------------+-------------+-----------------------+------------------------------------------+
-| App\Models\Product          | Active      | products, products:id | product_categories, stores:{id}:products |
-| App\Models\User             | Active      | users, users:{id}     | None                                     |
-| App\Models\Plan             | Recommended | N/A                   | Domain model (Candidate for AutoClears)  |
-| App\Models\Message          | Exempt      | N/A                   | Real-time Stream (Uncached by design)    |
-| App\Models\WalkRoute        | Exempt      | N/A                   | High-Frequency Stream (Uncached)         |
-+-----------------------------+-------------+-----------------------+------------------------------------------+
-
-+-------------------------------------------------------------------------+
-| Summary: 39 models scanned                                              |
-| • Active (AutoClearsCache): 18                                          |
-| • Exempt (Telemetry / Ephemeral): 16                                    |
-| • Recommended: 5                                                        |
-|                                                                         |
-| Architecture Health Score: 87% (Good)                                   |
-+-------------------------------------------------------------------------+
-
-Invalidation Architecture Guidance (1 suggested rule):
-
-  • App\Models\Order:
-    BelongsTo Store detected via store(), but parent cache is not linked.
-    Recommendation: Add protected array $cacheParents = ['store']; to Order
-    Auto-invalidates: "stores:{$this->store_id}:orders"
-```
+#### What will break it / What causes it not to work properly:
+- **Write-heavy tables with broad tags:** On tables with continuous concurrent updates (e.g., streaming telemetry), OCC will repeatedly discard stale writes. For high-frequency write tables, cache targeted single-item keys instead of broad table collections.
 
 ---
 
-## Eloquent Model Lifecycle (`AutoClearsCache`)
+### 1.11 Self-Healing Engine
 
-Add the `AutoClearsCache` trait to any Eloquent model. Whenever a record is created, updated, or deleted, its cache tags are automatically flushed **only after the active database transaction successfully commits** (`DB::afterCommit`):
+#### How it works:
+If a cached payload is corrupted, truncated by memory limits, or missing a chunk, Atomic Cache catches the deserialization exception, logs the event, purges the broken key, and silently recomputes fresh data from the callback without crashing the user's HTTP request.
+
+---
+
+## Layer 2: Eloquent Model Lifecycle (`AutoClearsCache`)
+
+Add `AutoClearsCache` to any Eloquent model to automate invalidations.
+
+### 2.1 Automatic Invalidation on `DB::afterCommit`
+
+#### How it works:
+Hooks into Eloquent model events: `created`, `updated`, `deleted`, and `restored` (for SoftDeletes).
+
+When a record changes:
+1. Resolves item tag: `{table}:{id}` (e.g. `products:42`).
+2. Resolves collection tag: `{table}` (e.g. `products`).
+3. Resolves parent relation tags (if `$cacheParents` is declared).
+4. Resolves custom related tags (if `$relatedCacheTags` is declared).
+5. Defers clearing until **`$connection->afterCommit()`**. If a database transaction rolls back, your cache remains completely untouched!
 
 ```php
 namespace App\Models;
@@ -578,26 +400,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use KaziOmar\AtomicCache\Traits\AutoClearsCache;
 
-class User extends Model
+class Product extends Model
 {
     use AutoClearsCache;
 
-    // Optional: automatically invalidate related cache tags when a user changes
-    protected array $relatedCacheTags = ['dashboard', 'admin_stats'];
+    // Optional: Invalidate additional related tags when any product changes:
+    protected array $relatedCacheTags = ['landing_page_stats'];
 }
 ```
 
-When `$user->save()`, `$user->update()`, `$user->decrement()`, `$user->increment()`, or `$user->delete()` executes:
-1. `AutoClearsCache` listens to model `created`, `updated`, `deleted`, and `restored` events.
-2. Defers invalidation to `DB::afterCommit` (if transaction rolls back, cache is untouched).
-3. Automatically invalidates single item tag: `users:{id}`.
-4. Automatically invalidates collection tag: `users`.
-5. Automatically invalidates related tags: `dashboard`, `admin_stats`.
-*(Note: Direct mass database queries that bypass Eloquent models entirely like `DB::table('users')->decrement(...)` or `User::where(...)->update(...)` do not fire model events; call `AtomicCache::clearTags('users')` for those).*
+---
 
-### Declarative Parent Invalidation (`$cacheParents`)
+### 2.2 Declarative Parent Invalidation (`$cacheParents`)
 
-Just like Laravel's native `protected $touches = ['store'];`, you can declare parent relationships to automatically invalidate parent-scoped cache tags whenever a child record is created, updated, soft-deleted, or restored:
+#### How it works:
+Declare parent relationships to automatically invalidate parent-scoped cache tags whenever a child record changes:
 
 ```php
 namespace App\Models;
@@ -610,7 +427,7 @@ class Order extends Model
 {
     use AutoClearsCache;
 
-    // Declarative Parent Invalidation (supports $cacheParents, or aliases $cacheTouches / $clearsRelations)
+    // Automatically invalidates Store caches when an Order changes:
     protected array $cacheParents = ['store'];
 
     public function store(): BelongsTo
@@ -620,211 +437,262 @@ class Order extends Model
 }
 ```
 
-#### What happens under the hood:
-When an order in Store #5 is created or updated:
-- Automatically flushes child item tag: `orders:{id}`
-- Automatically flushes child collection tag: `orders`
-- Automatically flushes parent child-scoped tag: `stores:5:orders`
-- Automatically flushes parent umbrella tag: `stores:5`
-- **Zero Cache Thrashing:** Leaving Store #1..#4 and unaffected models untouched!
-- **Dirty Foreign Key Protection:** If an order is moved from Store 1 to Store 2 (`$order->store_id = 2`), AtomicCache invalidates caches for **both** the old store (1) and the new store (2), completely preventing ghost data bugs even within nested `DB::transaction()` blocks!
-
-> [!NOTE]
-> **Parent Umbrella Tag Scope:** By design, `$cacheParents` flushes both the scoped collection tag (`stores:5:orders`) and the parent umbrella tag (`stores:5`). If your application caches the parent model's own record under `stores:5`, child writes will also refresh the parent's general cache.
->
-> **Custom Owner Keys:** Standard parent invalidation targets primary-key relationships (`ownerKey === primaryKey`). If you use custom keys (e.g. `belongsTo(Store::class, 'store_slug', 'slug')`), manage custom domain tags via `getRelatedCacheTags()`.
-
-### 🏷️ Cache Key vs Cache Tag Cheat-Sheet
-
-| What are you caching? | Service Cache Tag | Model Declaration |
-| :--- | :--- | :--- |
-| **All Products List** | `tags: ['products']` | `Product` $\rightarrow$ `use AutoClearsCache;` *(automatic)* |
-| **Single Product by ID** | `tags: ['products:5', 'products']` | `Product` $\rightarrow$ `use AutoClearsCache;` *(automatic)* |
-| **Store's Orders List** | `tags: ['stores:5:orders', 'stores:5']` | `Order` $\rightarrow$ `protected array $cacheParents = ['store'];` |
-| **Category's Products** | `tags: ['categories:3:products', 'categories:3']` | `Product` $\rightarrow$ `protected array $cacheParents = ['category'];` |
-
-> **Rule of Thumb:**
-> - **Cache Key:** The unique address of a specific box of data (includes method, page number, filters).
-> - **Cache Tag:** The label on the box used for grouped mass-invalidation (never includes page numbers or filters). Format: `{parent}:{parent_id}:{child}`.
+When an order for Store #5 is created or updated:
+- Flushes child item tag: `orders:{id}`
+- Flushes child collection tag: `orders`
+- Flushes parent scoped tag: `stores:5:orders`
+- Flushes parent umbrella tag: `stores:5`
+- **Dirty Foreign Key Handling:** If an order is moved from Store 1 to Store 2 (`$order->store_id = 2`), Atomic Cache invalidates tags for **both** Store 1 and Store 2!
 
 ---
 
-## 🏗️ Service & Repository Layer (`HasAtomicCache`)
+### 2.3 Model-Level Manual Cache Flushing
 
-Standardize your caching architecture across services with the `HasAtomicCache` trait:
+`AutoClearsCache` provides two intuitive helper methods directly on the model:
 
 ```php
-namespace App\Services;
+// 1. Instance helper: manually clear this record and its parent tags:
+$product = Product::find(42);
+$product->clearCache(); // Expressive alias for clearModelCacheOnCommit()
 
-use App\Models\User;
-use KaziOmar\AtomicCache\Traits\HasAtomicCache;
-
-class UserService
-{
-    use HasAtomicCache;
-
-    // Optional service-level configuration properties:
-    protected bool $cachingEnabled = true; // Set to false to bypass cache (useful in tests/debugging)
-    protected int $cacheTTL = 7200;        // Custom default TTL in seconds for this service
-    protected bool $cachePerUser = false;  // Scope all operations to the authenticated user ID
-    protected string $cacheResource = 'users'; // Base resource tag (defaults to table/plural class name)
-
-    public function find(int $id)
-    {
-        // Idiomatic single-item remember (alias: cacheItem)
-        return $this->rememberItem($id, fn() => User::findOrFail($id));
-    }
-
-    public function getActiveUsers()
-    {
-        // Idiomatic list remember (alias: cacheCollection or rememberList)
-        return $this->rememberCollection('active', fn() => User::where('active', 1)->get());
-    }
-
-    public function update(int $id, array $data)
-    {
-        $user = User::findOrFail($id);
-        $user->update($data);
-
-        // Standard Laravel terminology: forget single item & flush list
-        $this->forgetItem($id);       // alias: clearItemCache()
-        $this->flushCollection();     // alias: clearCollectionCache()
-
-        return $user;
-    }
-}
+// 2. Static helper: flush all collection-level caches for this model's table:
+// Ideal after mass updates or direct DB queries:
+Product::where('category_id', 5)->update(['discount' => 10]);
+Product::flushCache(); // Wipes all "products" collection caches in one line!
 ```
-
-### Service Configuration Properties
-
-You can customize caching per service by declaring any of these optional properties:
-
-| Property | Type | Default | Purpose |
-| :--- | :--- | :--- | :--- |
-| **`$cachingEnabled`** | `bool` | `true` | **Service Cache Toggle.** Set to `false` during automated testing or debugging to bypass caching completely and always fetch fresh database records. |
-| **`$cacheTTL`** | `int` | `3600` | **Service-Level Expiry.** Defines the default cache lifetime in seconds for this specific service without overriding global config. |
-| **`$cachePerUser`** | `bool` | `false` | **Automatic User Isolation.** When set to `true`, all cache keys generated in this service are automatically prefixed with the logged-in user's ID (`auth()->id()`), preventing user data leaks. |
-| **`$allowedQueryParams`** | `array` | `[]` | **Security Whitelist (DoS Mitigation).** When specified (e.g. `['page', 'sort', 'category']`), *only* these query parameters are hashed into the cache key. Any unexpected query parameters (`?attacker=1`) are discarded, preventing Cache Pollution and Redis memory exhaustion attacks. |
-| **`$cacheResource`** | `string` | *(auto)* | **Resource Tag & Namespace.** Specifies the cache tag and key prefix (e.g. `'users'`, `'orders'`). Defaults automatically to the model's table or pluralized class name (`UserService` -> `'users'`). |
-
-### Safe Argument Normalization
-If a service method receives complex arguments (e.g. `Closure`, Eloquent `Model`, or `Request`), `HasAtomicCache` safely converts them to unique hashes/identifiers before serialization. You will **never** encounter `Exception: Serialization of 'Closure' is not allowed`.
-
-### Automatic Pagination & Filter Isolation (With Smart Tracking Sanitization)
-When calling `cache()` or `rememberCollection()`, the trait automatically inspects `request()->query()`:
-- **Clean Segmentation:** Request `GET /users?page=1` and `GET /users?page=2` are automatically stored under separate, isolated cache keys.
-- **Cache Fragmentation Prevention (Cloudflare/CDN Style):** Common ad/analytics tracking parameters (`utm_*`, `fbclid`, `gclid`, `ttclid`, `msclkid`, `mc_cid`, `ref`, etc.) are automatically stripped before generating cache keys. When 10,000 visitors arrive from Facebook or Google Ads with unique `?fbclid=...` strings, they all share the exact same cached payload instead of polluting your cache memory with 10,000 duplicate entries!
-
-You can customize or extend ignored query parameters in `config/atomic-cache.php` or by defining `protected array $ignoredQueryParams = ['custom_tracker'];` on your service class.
-
-### HTTP Query Limits (Cache Poisoning & DoS Protection)
-To prevent hash collision attacks, query string pollution, and memory exhaustion, Atomic Cache enforces strict request query limits:
-- **`max_params` (Default: 20):** Requests with more than 20 query parameters automatically bypass the cache and run directly against the database.
-- **`max_bytes` (Default: 2,048 bytes):** Requests with query string payloads exceeding 2KB cleanly bypass caching.
-
-### Optimistic Concurrency Control (OCC Tag Invalidation)
-When computing long-running closures in `remember()`, race conditions can occur if another process invalidates tags mid-flight (e.g. an admin updates inventory while a heavy 3-second report is calculating). 
-
-Atomic Cache enforces **Optimistic Concurrency Control (OCC)**:
-1. Records the tag namespace/version identifier immediately *before* invoking the closure.
-2. Checks the tag version again *after* computation completes.
-3. If tags were flushed or updated while the closure ran, the stale calculated write is safely **discarded** instead of repopulating expired cache keys.
 
 ---
 
-## Real-World Example: E-Commerce Store
+### 2.4 Critical Rules & What Breaks Model Auto-Invalidation
 
-Here is how a real-world e-commerce application uses Laravel Atomic Cache to handle high-traffic bursts, inventory changes, and large catalogs effortlessly:
+- **Mass queries bypass model events:** Direct query builder mutations (`Product::where(...)->update(...)`, `delete()`, or `DB::table('products')->update(...)`) **do not fire Eloquent events**. AutoClearsCache cannot detect them. 
+  - *Solution:* Run `Product::flushCache();` right after your bulk query.
+- **Quiet operations bypass events:** Calling `$model->saveQuietly()`, `updateQuietly()`, `deleteQuietly()`, or wrapping code in `Model::withoutEvents()` intentionally suppresses model events.
+  - *Solution:* Manually call `$model->clearCache()` if you need invalidation after quiet saves.
+- **`$cacheParents` only supports `BelongsTo`:** Declaring `hasMany`, `hasOne`, `belongsToMany`, or `morphTo` in `$cacheParents` is not supported and will be silently ignored.
+- **Custom owner keys are skipped:** If a relationship uses a custom non-primary owner key (e.g. `belongsTo(Store::class, 'store_slug', 'slug')`), it is skipped because the child model holds a string slug rather than the parent's primary ID, which would create mismatched umbrella tags (`stores:nike` vs `stores:5`).
+- **Grandparent relations do not auto-cascade:** Multi-level hierarchies (e.g. `OrderItem -> Order -> Store`) do not automatically cascade from item to store. Updating an `OrderItem` invalidates `Order`, but will not clear `Store` unless `Order` is touched.
+- **Runtime property mutation is ignored:** Because configured parent relations are cached in-memory per class for performance, dynamically modifying `$model->cacheParents = [...]` on an active model instance at runtime will have no effect.
+- **Rolled-back transactions do not clear cache:** If changes occur inside a `DB::transaction()` that throws an exception and rolls back, `afterCommit()` will not fire. The cache remains untouched.
 
-### 1. The Eloquent Model
+---
+
+## Layer 3: Query Builder Macros (`->atomicCache()`)
+
+### 3.1 Zero-Key Query & First Record Caching
+
+#### How it works:
+Chain `->atomicCache()` directly off any Eloquent or Query Builder query:
+
 ```php
-namespace App\Models;
-
-use Illuminate\Database\Eloquent\Model;
-use KaziOmar\AtomicCache\Traits\AutoClearsCache;
-
-class Product extends Model
-{
-    use AutoClearsCache;
-
-    // Optional: Invalidate related tags when a product changes
-    protected array $relatedCacheTags = ['homepage_featured'];
-
-    public function category()
-    {
-        return $this->belongsTo(Category::class);
-    }
-}
-```
-
-### 2. The Storefront Controller (Zero-Key Query Caching)
-```php
-namespace App\Http\Controllers;
-
-use App\Models\Product;
-use Illuminate\Http\Request;
-
-class ShopController extends Controller
-{
-    public function index(Request $request)
-    {
-        // Zero-Key Query Caching: auto-generates sha256 hash from compiled SQL + bindings
-        // Automatically tags with 'products' and Product::class for instantaneous invalidation on DB commit
-        $catalog = Product::where('status', 'active')
-            ->orderBy('created_at', 'desc')
-            ->atomicCache(3600);
-
-        return view('shop.index', compact('catalog'));
-    }
-
-    public function show(string $slug)
-    {
-        // First record cached cleanly with zero keys
-        $product = Product::where('slug', $slug)->atomicCacheFirst(3600);
-
-        return view('shop.show', compact('product'));
-    }
-}
-```
-
-### 3. The Order Checkout / Stock Update (Transaction-Safe Invalidation)
-```php
-namespace App\Services;
-
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 
-class OrderService
+// 1. Auto-generates sha256 hash from SQL + bindings + eager loads
+// Automatically tagged with 'products' and Product::class for auto-invalidation:
+$featured = Product::where('status', 'active')->where('featured', 1)->atomicCache(3600);
+
+// 2. Single record caching:
+$product = Product::where('slug', $slug)->atomicCacheFirst(3600);
+
+// 3. Custom key mode:
+$bestSellers = Product::where('sales', '>', 500)->atomicCache('bestsellers', 7200);
+
+// 4. Works on DB facade and relationships:
+$stats = DB::table('orders')->where('status', 'paid')->atomicCache(1800);
+$userOrders = $user->orders()->latest()->atomicCache(3600);
+```
+
+---
+
+### 3.2 Critical Rules & What Breaks Query Macros
+
+- **Do NOT chain `->paginate()` after `->atomicCache()`:**
+  - `atomicCache()` executes `->get()` immediately and returns an Eloquent/Support `Collection`. Chaining `->paginate()` afterward will throw a fatal error: `Method paginate does not exist on Collection`.
+  - *Solution:* For pagination, use the Service Layer's `rememberCollection()` method (see Layer 4).
+- **Mass updates will not clear query macro caches:**
+  - If you cache a query via `Product::where('active', 1)->atomicCache()`, running `Product::where('active', 1)->update(['price' => 20])` will not clear the cache because no Eloquent event fires.
+  - *Solution:* Call `Product::flushCache();` after the update.
+- **Raw SQL subqueries are not auto-tagged:**
+  - While standard `join()` and `leftJoin()` methods are inspected and auto-tagged, raw SQL joins or subqueries (`whereRaw('exists (select 1 from categories ...)')`) cannot be parsed for table names.
+  - *Solution:* Pass additional table tags explicitly: `->atomicCache(3600, tags: ['categories'])`.
+- **Parameter order vigilance:**
+  - The signature is `atomicCache($keyOrTtl = null, $ttl = null, array $tags = [])`. Passing `$query->atomicCache(3600)` treats `3600` as TTL. If you want a custom key, pass the key first: `$query->atomicCache('my_key', 3600)`.
+
+---
+
+## Layer 4: Service & Repository Layer (`HasAtomicCache`)
+
+Standardize caching in your service or repository classes by adding the `HasAtomicCache` trait.
+
+### 4.1 Automatic Pagination & Filter Isolation (`rememberCollection`)
+
+#### How it works:
+When caching paginated or filtered lists, `rememberCollection()` automatically inspects `request()->query()` and hashes the page number and filters into the cache key:
+
+```php
+namespace App\Services;
+
+use App\Models\Product;
+use KaziOmar\AtomicCache\Traits\HasAtomicCache;
+
+class ProductService
 {
-    public function checkout(array $cartItems)
+    use HasAtomicCache;
+
+    protected string $cacheResource = 'products'; // Resource name and cache tag
+
+    public function getActiveProducts()
     {
-        DB::transaction(function () use ($cartItems) {
-            foreach ($cartItems as $item) {
-                $product = Product::findOrFail($item['product_id']);
-                $product->decrement('stock', $item['quantity']);
-
-                // Note: Because decrement() updates the model, AutoClearsCache
-                // queues the cache flush callback to run strictly inside DB::afterCommit().
-                // If payment fails and the transaction rolls back, your cache remains 100% UNTOUCHED!
-            }
-        });
-
-        // Once DB transaction successfully commits, all Product catalog caches
-        // and single-item caches are instantly and atomically invalidated!
+        // GET /products?page=1 and GET /products?page=2 are cached separately:
+        return $this->rememberCollection('active', fn() => Product::where('status', 'active')->paginate(15));
     }
 }
 ```
 
-### 4. Heavy Analytics / Black Friday Protection
-```php
-use KaziOmar\AtomicCache\Facades\AtomicCache;
+---
 
-// During sudden flash sale traffic surges, only 1 worker computes this heavy query,
-// while 5,000 concurrent shoppers wait a fraction of a second and read the cached response:
-$flashSaleStats = AtomicCache::rememberWithLock('flash_sale_stats', 1800, function () {
-    return HeavyReportingService::calculateDiscountMargins();
-}, lockSeconds: 10, waitSeconds: 5);
+### 4.2 Single Item Caching (`rememberItem`)
+
+```php
+public function findProduct(int $id)
+{
+    // Caches under key "products:{id}", tagged with "products:{id}" and "products":
+    return $this->rememberItem($id, fn() => Product::findOrFail($id));
+}
 ```
+
+---
+
+### 4.3 Query Parameter Sanitization & Whitelisting
+
+To prevent **Cache Fragmentation**, `rememberCollection` automatically strips common marketing and tracking query parameters (`utm_*`, `fbclid`, `gclid`, `ttclid`, `ref`, etc.). When 10,000 visitors arrive from ad campaigns with unique tracking IDs, they all share the exact same cached payload!
+
+To enforce an explicit whitelist of allowed query parameters:
+```php
+class ProductService
+{
+    use HasAtomicCache;
+
+    // Only these parameters will be hashed into the cache key:
+    protected array $allowedQueryParams = ['page', 'sort', 'category'];
+}
+```
+
+---
+
+### 4.4 DoS & Cache Poisoning Limits
+
+To protect against memory exhaustion attacks, Atomic Cache enforces strict limits on request queries:
+- **Max Parameters (Default: 20):** Queries exceeding 20 parameters cleanly bypass the cache and run against the database.
+- **Max Size (Default: 2048 bytes):** Serialized query strings exceeding 2KB cleanly bypass caching.
+
+---
+
+### 4.5 Critical Rules & What Breaks Service Caching
+
+- **Do NOT use `remember()` for paginated data:**
+  - If you call `$this->remember('active_products', 3600, fn() => Product::paginate(15))` instead of `rememberCollection()`, it will **not** inspect `request()->query()`. Page 1 results will be cached and returned for Page 2, Page 3, and all other pages! Always use `rememberCollection()`.
+- **Resource name guessing mismatches:**
+  - If your service class is named `CatalogManager`, the trait guesses the resource tag as `'catalog_managers'`. If your database table is `products`, `Product` model events will clear `'products'`, leaving `'catalog_managers'` stale!
+  - *Solution:* Always explicitly declare `protected string $cacheResource = 'products';` when the class name does not match the table name.
+- **Un-serializable objects in `$extraArgs`:**
+  - Passing closures with un-serializable references into `$extraArgs` will prevent deterministic cache key generation. Pass scalar values (integers, strings, arrays) instead.
+
+---
+
+## Layer 5: Blade Fragment Caching (`@atomicCache`)
+
+### 5.1 Usage & Tagging
+
+Cache expensive HTML blocks, navigation bars, and widgets directly in your Blade views:
+
+```blade
+{{-- Caches rendered HTML for 3600 seconds, tagged with 'categories' --}}
+@atomicCache('sidebar_categories', 3600, ['categories'])
+    <div class="sidebar">
+        @foreach(\App\Models\Category::with('subcategories')->get() as $category)
+            <h3>{{ $category->name }}</h3>
+            @foreach($category->subcategories as $sub)
+                <p>{{ $sub->title }}</p>
+            @endforeach
+        @endforeach
+    </div>
+@endAtomicCache
+```
+
+---
+
+### 5.2 Critical Rules & What Breaks Blade Caching
+
+- **Never cache `@csrf` or forms inside a fragment:**
+  - CSRF tokens are unique to each user session. If you cache a form containing `@csrf`, the first user's CSRF token is stored. When subsequent users submit the form, they will receive a `419 Page Expired` error!
+- **Never cache user-specific data without user scoping:**
+  - If you cache a block containing `@atomicCache('user_header')` with the user's name or cart count, User A's personal information will be cached and shown to User B (a major data leak).
+  - *Solution:* Append the user ID to the key: `@atomicCache('user_header_' . auth()->id(), 3600)`.
+- **Never cache session flash messages or `@error` directives:**
+  - `session('status')` or `@error('email')` cached inside a fragment will either never display or remain permanently visible to all subsequent visitors.
+- **Unclosed `@atomicCache` blocks:**
+  - Omitting `@endAtomicCache` leaves an active PHP output buffer open, which can break page rendering.
+
+---
+
+## Layer 6: CLI Diagnostics & Auditing
+
+### 6.1 Model Architecture Auditor (`atomic-cache:check`)
+
+Scan your entire application's Eloquent models to verify cache invalidation tags and inspect architectural health:
+
+```bash
+php artisan atomic-cache:check
+php artisan atomic-cache:check --path=app/Domain/Shop/Models
+php artisan atomic-cache:check --filter=recommended
+php artisan atomic-cache:check --json
+```
+
+---
+
+### 6.2 Performance Benchmark CLI (`atomic-cache:bench`)
+
+Benchmark your cache latency, Gzip payload reduction, and chunking integrity in real-time:
+
+```bash
+php artisan atomic-cache:bench
+php artisan atomic-cache:bench --driver=redis --iterations=10
+```
+
+---
+
+### 6.3 Safe Cache Clearing CLI (`atomic-cache:clear`)
+
+```bash
+# Clear a specific tag:
+php artisan atomic-cache:clear products
+
+# Clear multiple tags:
+php artisan atomic-cache:clear --tags=products,categories
+
+# Clear entire store (requires confirmation in production):
+php artisan atomic-cache:clear --all
+```
+
+> [!WARNING]
+> Running `--all` flushes the **entire** cache store. If your cache store is shared with Redis sessions or queue workers, use `--tags=` to avoid purging session data.
+
+---
+
+## Driver Compatibility Matrix
+
+Atomic Cache dynamically evaluates your cache store: taggable stores utilize native tags, while non-taggable stores automatically receive virtual tagging.
+
+| Driver | Tag Support | Stampede Locks | CI Matrix Status | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **`redis`** | **Native** | Yes | Tested in CI | Recommended for high-concurrency production. Includes direct Redis tag purging on Laravel 10 + phpredis 6.1+. |
+| **`file`** | **Virtual** | Yes | Tested in CI | Default local dev store. Virtual tags provide zero-crash tagging. Orphan files expire naturally by TTL. |
+| **`database`** | **Virtual** | Yes | Compatible | Works on MySQL, PostgreSQL, SQLite, and SQL Server without extra setup. |
+| **`array`** | **Native** | Yes | Tested in CI | In-memory per process. Ideal for PHPUnit and automated test suites. |
+| **`memcached`**| **Native** | Yes | Compatible | 1 MB item limit: the transparent 800 KB chunk guard and Gzip compression protect against key overflow. |
+| **`dynamodb`** | **Virtual** | Yes | Compatible | Items limited to 400 KB; configure `ATOMIC_CACHE_CHUNK_MAX_BYTES` below 400,000. |
 
 ---
 
@@ -834,117 +702,57 @@ Publish `config/atomic-cache.php` to customize package behavior:
 
 ```php
 return [
-    // Master switch to enable/disable caching (useful in local tests)
     'enabled' => env('ATOMIC_CACHE_ENABLED', true),
-
-    // Default TTL in seconds (1 hour)
     'default_ttl' => env('ATOMIC_CACHE_DEFAULT_TTL', 3600),
-
-    // Specific cache store (null = default Laravel cache store)
     'store' => env('ATOMIC_CACHE_STORE', null),
-
-    // Global key namespace prefix
     'prefix' => env('ATOMIC_CACHE_PREFIX', 'atomic'),
 
-    // Stampede distributed locking settings
     'stampede' => [
         'enabled' => env('ATOMIC_CACHE_STAMPEDE_ENABLED', true),
         'lock_seconds' => env('ATOMIC_CACHE_LOCK_SECONDS', 10),
         'wait_seconds' => env('ATOMIC_CACHE_WAIT_SECONDS', 5),
     ],
 
-    // Automatic Gzip payload compression
     'compression' => [
         'enabled' => env('ATOMIC_CACHE_COMPRESSION_ENABLED', true),
         'threshold' => env('ATOMIC_CACHE_COMPRESSION_THRESHOLD', 51200), // 50 KB
         'level' => env('ATOMIC_CACHE_COMPRESSION_LEVEL', 6),
     ],
 
-    // Transparent chunking for large datasets & collections
     'chunking' => [
         'enabled' => env('ATOMIC_CACHE_CHUNKING_ENABLED', true),
-        'threshold' => env('ATOMIC_CACHE_CHUNKING_THRESHOLD', 1000), // items threshold
-        'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000), // items per chunk
-        'max_bytes' => env('ATOMIC_CACHE_CHUNK_MAX_BYTES', 800000), // dynamic byte size ceiling (800KB)
-        'clean_on_put' => env('ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT', false), // purge prior chunks on non-chunked put
+        'threshold' => env('ATOMIC_CACHE_CHUNKING_THRESHOLD', 1000),
+        'chunk_size' => env('ATOMIC_CACHE_CHUNK_SIZE', 1000),
+        'max_bytes' => env('ATOMIC_CACHE_CHUNK_MAX_BYTES', 800000), // 800 KB ceiling
+        'clean_on_put' => env('ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT', false),
     ],
 
-    // Write deduplication (skips compression & chunk re-splitting if identical content is cached)
     'deduplication' => [
         'enabled' => env('ATOMIC_CACHE_DEDUPLICATION_ENABLED', false),
     ],
 
-    // Self-healing from corrupted cache payloads
     'self_healing' => [
         'enabled' => env('ATOMIC_CACHE_SELF_HEALING', true),
         'log_corrupted' => env('ATOMIC_CACHE_LOG_CORRUPTED', true),
     ],
 
-    // Random variance on expiry time
     'jitter' => [
         'enabled' => env('ATOMIC_CACHE_JITTER_ENABLED', false),
         'percentage' => env('ATOMIC_CACHE_JITTER_PERCENTAGE', 5), // ±5%
     ],
 
-    // Marketing/analytics parameters stripped from request query strings
     'ignored_query_parameters' => [
         'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
         'fbclid', 'gclid', 'dclid', 'wbraid', 'gbraid', 'ttclid', 'msclkid',
         'mc_cid', 'mc_eid', '_ga', '_gl', '_gid', 'ref',
     ],
 
-    // HTTP Query Limits (Cache Poisoning & DoS Protection)
     'query_limits' => [
         'max_params' => env('ATOMIC_CACHE_QUERY_MAX_PARAMS', 20),
         'max_bytes' => env('ATOMIC_CACHE_QUERY_MAX_BYTES', 2048),
     ],
 ];
 ```
-
-### Environment Variables (.env)
-
-| Key | Default | Description |
-| :--- | :--- | :--- |
-| `ATOMIC_CACHE_ENABLED` | `true` | Enable or disable atomic caching globally |
-| `ATOMIC_CACHE_DEFAULT_TTL` | `3600` | Default Time-To-Live in seconds |
-| `ATOMIC_CACHE_STORE` | `null` | Cache driver store to use (`redis`, `file`, etc.) |
-| `ATOMIC_CACHE_PREFIX` | `atomic` | Key namespace prefix |
-| `ATOMIC_CACHE_STAMPEDE_ENABLED` | `true` | Enable atomic locking by default |
-| `ATOMIC_CACHE_LOCK_SECONDS` | `10` | Maximum lock duration during computation |
-| `ATOMIC_CACHE_WAIT_SECONDS` | `5` | Maximum wait time for concurrent requests |
-| `ATOMIC_CACHE_COMPRESSION_ENABLED`| `true` | Auto-compress payloads exceeding threshold |
-| `ATOMIC_CACHE_COMPRESSION_THRESHOLD`| `51200` | Compression threshold in bytes (50 KB) |
-| `ATOMIC_CACHE_CHUNKING_ENABLED` | `true` | Auto-partition large datasets into safe chunk keys |
-| `ATOMIC_CACHE_CHUNKING_THRESHOLD` | `1000` | Minimum item count required to trigger chunking |
-| `ATOMIC_CACHE_CHUNK_SIZE` | `1000` | Item count per partitioned chunk |
-| `ATOMIC_CACHE_CHUNK_MAX_BYTES` | `800000` | Dynamic chunk size threshold (under 800 KB for Memcached) |
-| `ATOMIC_CACHE_CHUNKING_CLEAN_ON_PUT` | `false` | When true, non-chunked put purges prior chunk keys. Defaults to `false` for optimal write performance (no extra GET); orphan chunks expire cleanly on TTL. |
-| `ATOMIC_CACHE_DEDUPLICATION_ENABLED`| `false` | Opt-in DNA hashing: skips compression and chunk re-splitting if identical content is cached |
-| `ATOMIC_CACHE_JITTER_ENABLED` | `false` | Enable TTL variance globally |
-| `ATOMIC_CACHE_JITTER_PERCENTAGE` | `5` | Jitter variance percentage (±5%) |
-| `ATOMIC_CACHE_QUERY_MAX_PARAMS` | `20` | Max allowed sanitized HTTP query parameters before bypassing cache |
-| `ATOMIC_CACHE_QUERY_MAX_BYTES` | `2048` | Max allowed serialized query string size before bypassing cache |
-
----
-
-## Driver Compatibility Matrix
-
-Atomic Cache dynamically evaluates your cache store at runtime: stores that support native tagging utilize Laravel native tags, while others automatically receive virtual tagging (atomic UUID version tokens embedded in keys). Distributed locks are acquired when the store implements Laravel's `LockProvider`; otherwise, closures execute directly without locking.
-
-| Driver | Tag Support | Stampede Locks | CI Matrix Status | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| **`redis`** | **Native** | ✅ Yes | ✅ Tested in CI | Recommended for high-concurrency production. On Laravel 10 with phpredis 6.1+, direct Redis tag purging applies automatically. |
-| **`file`** | **Virtual** | ✅ Yes | ✅ Tested in CI | Default local dev store. Virtual tags provide zero-crash tagging. Orphan files expire naturally by TTL. |
-| **`database`** | **Virtual** | ✅ Yes | ⚙️ Compatible | Works on MySQL, PostgreSQL, SQLite, and SQL Server without extra setup. |
-| **`array`** | **Native** | ✅ Yes | ✅ Tested in CI | In-memory per process. Ideal for PHPUnit and automated test suites. |
-| **`memcached`**| **Native** | ✅ Yes | ⚙️ Compatible | 1 MB item limit: the transparent 800 KB chunk guard and Gzip compression protect against key overflow. |
-| **`dynamodb`** | **Virtual** | ✅ Yes | ⚙️ Compatible | Items limited to 400 KB; ensure `ATOMIC_CACHE_CHUNK_MAX_BYTES` is configured below 400,000. |
-| **`null`** | None | ❌ None | ⚙️ Compatible | Cache bypass mode (`Cache::null()`). Nothing is cached. |
-
-> [!NOTE]
-> **Universal Engine Features:** Optimistic Concurrency Control (OCC), Self-Healing, TTL Jitter, Gzip Compression, Query DoS Limits, and Parent Cache Invalidation operate identically across **all** drivers!
->
-> **Redis Cluster Note:** Transparent chunk reassembly reads all chunks using multi-key requests. If utilizing Redis Cluster with hash slots, ensure related keys are slotted appropriately or evaluate single-key compression before multi-chunk thresholds.
 
 ---
 
@@ -953,11 +761,9 @@ Atomic Cache dynamically evaluates your cache store at runtime: stores that supp
 ### 1. The cache is not cleared after updating data
 | Possible Cause | Recommended Fix |
 | :--- | :--- |
-| **Mass Eloquent Mutations:** `Model::where()->update()`, `delete()`, `insert()`, `upsert()`, or `DB::table()`. These bypass Eloquent model events. | Call `AtomicCache::clearTags([Product::class])` explicitly after the query, or iterate using `Model::chunk(100, fn($items) => $items->each->update(...))`. |
+| **Mass Eloquent Mutations:** `Model::where()->update()`, `delete()`, `insert()`, or `DB::table()`. These bypass Eloquent model events. | Call `Product::flushCache();` or `AtomicCache::clearCollection('products')` right after the bulk query. |
 | **Missing Trait:** Model does not use `AutoClearsCache`. | Add `use AutoClearsCache;` to the model. Run `php artisan atomic-cache:check` to audit your models. |
-| **Quiet Operations:** Using `saveQuietly()`, `updateQuietly()`, or `withoutEvents()`. | These suppress model events by design. Clear relevant tags manually via `AtomicCache::clearTags(...)`. |
-| **Pivot Table Changes:** Many-to-many `attach()`, `detach()`, or `sync()`. | Pivot mutations do not fire parent model events. Call `AtomicCache::clearTags(...)` on the related models after syncing. |
-| **Raw SQL Joins or Subqueries:** Queries with `whereRaw()` or nested subqueries. | Raw SQL is not dynamically parsed for table tags. Pass additional tags explicitly: `->atomicCache(3600, tags: ['customers'])`. |
+| **Quiet Operations:** Using `saveQuietly()`, `updateQuietly()`, or `withoutEvents()`. | These suppress model events by design. Call `$product->clearCache()` manually. |
 | **Rolled-back Transactions:** The write ran inside a `DB::transaction(...)` that rolled back. | `AutoClearsCache` uses `DB::afterCommit`. If the transaction rolls back, no database changes occurred, so cache remains intact. |
 | **Custom Owner Keys:** A child model uses a custom owner key (e.g. `belongsTo(Store::class, 'slug', 'slug')`). | `$cacheParents` automatically skips custom owner keys to prevent mismatched umbrella tags. Attach parent tags manually if needed. |
 
@@ -970,55 +776,20 @@ Atomic Cache dynamically evaluates your cache store at runtime: stores that supp
 | **Query Parameter Limits Exceeded:** The request has more than 20 query parameters or query string exceeds 2048 bytes. | AtomicCache bypasses caching on abnormal queries to protect against Cache Poisoning DoS attacks. Adjust `ATOMIC_CACHE_QUERY_MAX_PARAMS` or `ATOMIC_CACHE_QUERY_MAX_BYTES` if legitimate requests are large. |
 | **OCC Discard on High Writes:** Tags were invalidated while the `remember()` closure was computing. | Expected behavior under Optimistic Concurrency Control. On write-heavy tables, use targeted single-record keys instead of broad table tags. |
 | **Computed TTL <= 0:** TTL is 0, negative, or in the past. | AtomicCache forgets/clears keys when given a non-positive TTL or past `DateTimeInterface`. Verify your TTL logic. |
-| **Un-normalized Arguments in `HasAtomicCache`:** Passing dynamic closures or raw query builders to `cache()`. | Pass scalar values (IDs, strings, integers) to ensure deterministic cache key generation. |
-| **Array Driver in Production:** The `array` driver keeps cache in memory per worker process. | Configure a persistent cache store like `redis`, `file`, or `database`. |
-| **Guest Scoping:** Guests cached via `forUser()` receive session-scoped keys (`guest:<session_id>`). | For data identical across all guests and users, avoid `forUser()` and use standard `remember()`. |
-
----
-
-### 3. Common Error Messages & Inquiries
-
-#### "This cache store does not support tagging"
-AtomicCache automatically provides virtual tags for non-taggable drivers (`file`, `database`, `dynamodb`). You will only see this error if you invoke Laravel's native `Cache::tags([...])` directly on an unsupported store. Always use `AtomicCache::tags([...])` instead.
-
-#### "Tags are flushed but keys remain in Redis (Laravel 10)"
-On Laravel 10 combined with `phpredis` 6.1 or newer, native Laravel Redis tag clearing could fail to scan tag entries on `flush()`. AtomicCache includes an automatic direct tag purge mechanism for this combination, ensuring clean eviction. Upgrading to Laravel 11+ natively uses the updated tag scanner.
-
-#### "Logs show corrupted or missing chunk messages"
-If a multi-chunk payload experiences an unexpected eviction (e.g. Redis `maxmemory` evicting one chunk of a large dataset), AtomicCache's self-healing layer detects the missing chunk, clears the corrupt key, and recalculates the original data without crashing the user's request. If this happens frequently, review Redis memory limits or raise compression thresholds. You can silence corruption notices via `ATOMIC_CACHE_LOG_CORRUPTED=false`.
-
-#### "atomic-cache:clear --all cleared my sessions and queues"
-Using `--all` flushes the **entire** configured cache store, not just AtomicCache keys. To clear only application caches, clear by specific tags (e.g. `php artisan atomic-cache:clear products`). In production environments, `--all` requires confirmation unless `--force` is supplied. To isolate application caches from sessions, configure a dedicated cache store via `ATOMIC_CACHE_STORE`.
-
-#### Testing & Octane Best Practices
-- **Disable in Unit Tests:** Set `ATOMIC_CACHE_ENABLED=false` or use `CACHE_STORE=array` in `phpunit.xml` to execute closures directly.
-- **TearDown Reset:** Call `Cache::flush()` in your test `tearDown()` method when tests depend on clean state.
-- **Octane / Long-Running Workers:** If you dynamically manipulate `$cacheParents` during testing or long-running worker loops, clear the in-memory relation cache using `Model::flushConfiguredParentRelationsCache()`.
 
 ---
 
 ## Upgrade Guide
 
-Atomic Cache adheres to Semantic Versioning. If upgrading between minor or patch releases, consult the behavior changes below:
+Atomic Cache adheres to Semantic Versioning:
 
 | Release | Change | Impacted Workloads | Recommended Action |
 | :--- | :--- | :--- | :--- |
-| **`v1.4.2`** | **Transaction-Safe Deferred Parent Invalidation** | Models using `$cacheParents` updated inside `DB::transaction(...)`. | Tags are resolved at event dispatch time before `syncOriginal()`, capturing old & new parent keys accurately after commit. No action needed. |
+| **`v1.4.4`** | **Model Manual Flush Helpers & Hardened Reflection** | All models using `AutoClearsCache`. | Added `$model->clearCache()` instance helper and `Model::flushCache()` static helper for convenient invalidation after bulk updates. |
+| **`v1.4.2`** | **Transaction-Safe Deferred Parent Invalidation** | Models using `$cacheParents` updated inside `DB::transaction(...)`. | Tags are resolved at event dispatch time before `syncOriginal()`, capturing old & new parent keys accurately after commit. |
 | **`v1.4.0`** | **Smart Parent Invalidation & Architecture Linter** | Applications declaring parent relationships (`$cacheParents`). | Run `php artisan atomic-cache:check` to audit Eloquent relationship caching health. |
 | **`v1.3.8`** | **Optimistic Concurrency Control (OCC) & Query DoS Limits** | Write-heavy models and long filter query strings. | Cache computation aborted if tags changed mid-flight. Requests exceeding 20 query parameters bypass cache to prevent DoS. |
 | **`v1.3.7`** | **Chunk Generation IDs & Tag-Scoped Flush** | Transparent chunking users. | Chunk keys utilize `{key}:__chunk__:{generation}:{i}` to eliminate torn reads. Old chunk formats remain backwards-compatible. |
-| **`v1.3.4`** | **Opt-in Deduplication & Event Hooks** | `AutoClearsCache` now listens to `created`, `updated`, `deleted`, `restored` (instead of `saved`). | `increment()` and `decrement()` now trigger invalidation. Deduplication is opt-in via `ATOMIC_CACHE_DEDUPLICATION_ENABLED=true`. |
-
-### Recommended Upgrade Procedure
-1. Update Composer:
-   ```bash
-   composer update thekaziomar/laravel-atomic-cache
-   ```
-2. Verify Configuration: Check your published `config/atomic-cache.php` against the latest package defaults (e.g. `query_limits`, `chunking.max_bytes`).
-3. Run Architecture Audit:
-   ```bash
-   php artisan atomic-cache:check
-   ```
 
 ---
 
@@ -1028,14 +799,14 @@ Run the test suite using PHPUnit:
 
 ```bash
 composer test
+# or
+vendor/bin/phpunit
 ```
 
 ---
 
-## Credits
+## Credits & License
 
 - **Kazi Omar Faruk** ([@kaziomarsh24](https://github.com/kaziomarsh24))
-
-## License
-
-The MIT License (MIT). Please see [License File](LICENSE) for more information.
+- Built with high-performance distributed architecture for modern Laravel applications.
+- Licensed under the **MIT License**. Please see [License File](LICENSE) for more information.

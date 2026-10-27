@@ -753,4 +753,32 @@ class ParentCacheTouchesTest extends TestCase
         $declared = $refMethod->invoke($command, $model);
         $this->assertEquals(['store'], $declared);
     }
+
+    /**
+     * Test 23: clearCache() instance helper and flushCache() static helper manually invalidate model caches.
+     */
+    public function test_model_clear_cache_and_static_flush_cache(): void
+    {
+        // 1. Seed caches
+        AtomicCache::tags(['test_orders'])->put('order_list', 'cached_list', 3600);
+        AtomicCache::tags(['test_orders:5'])->put('order_5', 'cached_order_5', 3600);
+        $this->assertEquals('cached_list', AtomicCache::tags(['test_orders'])->get('order_list'));
+        $this->assertEquals('cached_order_5', AtomicCache::tags(['test_orders:5'])->get('order_5'));
+
+        // 2. Test instance clearCache()
+        $order = new TestOrderModel();
+        $order->id = 5;
+        $order->store_id = 1;
+        $order->clearCache();
+
+        $this->assertNull(AtomicCache::tags(['test_orders:5'])->get('order_5'));
+
+        // 3. Re-seed collection and test static flushCache()
+        AtomicCache::tags(['test_orders'])->put('order_list_2', 'cached_list_2', 3600);
+        $this->assertEquals('cached_list_2', AtomicCache::tags(['test_orders'])->get('order_list_2'));
+
+        TestOrderModel::flushCache();
+        $this->assertNull(AtomicCache::tags(['test_orders'])->get('order_list_2'));
+    }
 }
+

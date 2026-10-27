@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Model Manual Flush Helpers:** Added `$model->clearCache()` instance method (expressive alias for `clearModelCacheOnCommit()`) and `Model::flushCache()` static method in `AutoClearsCache` trait for single-line manual cache invalidation after bulk updates, mass deletes, or direct SQL queries.
 - **Class-Level In-Memory Static Cache:** Added `static::$configuredParentRelationsCache` in `AutoClearsCache` to cache resolved parent relations per model class, eliminating property inspection overhead during repeated batch saves.
 - **Private Property Declarations Supported:** Verified and tested support for models declaring `private array $cacheParents`, ensuring private parent relation definitions are safely extracted across PHP 8.2–8.5 without requiring deprecated `setAccessible()` calls.
-- **Architectural Limitations & Gotchas Documentation:** Documented query builder mass mutations (`Model::query()->update()`), pagination guidance using `HasAtomicCache::rememberCollection()`, write-heavy table invalidation tradeoffs, and raw SQL subquery join recommendations across `README.md` and `docs/index.html`.
+- **Core-First Documentation Architecture & Critical Rules:** Reorganized `README.md` to follow a Core-First architecture, detailing exact usage rules alongside comprehensive bullet points outlining what causes each feature not to work (common pitfalls, anti-patterns, and framework boundaries) across all 6 architectural layers.
 
 ---
 
