@@ -32,7 +32,7 @@ class BenchmarkCommand extends Command
         $format = $this->option('format');
 
         if ($format !== 'json') {
-            $this->info("⚡ Running AtomicCache Benchmark against driver [{$driver}] ({$iterations} iterations)...");
+            $this->info("Running AtomicCache Benchmark against driver [{$driver}] ({$iterations} iterations)...");
         }
 
         $latency = $this->benchmarkLatency($driver, $iterations);
@@ -189,28 +189,28 @@ class BenchmarkCommand extends Command
             ['Metric Category', 'Scenario', 'Raw / Simulated Baseline', 'AtomicCache Result', 'Improvement / Status'],
             [
                 [
-                    '⚡ Latency / Speed',
+                    'Latency / Speed',
                     'Database Query vs Cache Hit',
                     "{$latency['simulated_db_ms']} ms (Simulated DB)",
                     "{$latency['warm_hit_ms']} ms",
                     "<info>+{$latency['speedup_percent']}% Faster</info>",
                 ],
                 [
-                    '📦 Payload Size',
+                    'Payload Size',
                     'Large Array Gzip Compression',
                     round($compression['raw_bytes'] / 1024, 2) . ' KB',
                     round($compression['compressed_bytes'] / 1024, 2) . ' KB',
                     "<info>{$compression['saved_percent']}% Memory Saved</info>",
                 ],
                 [
-                    '🧩 Safe Chunking',
+                    'Safe Chunking',
                     'Large Dataset (2,500 items)',
                     'Single raw item (Risk: 1MB limit)',
                     "{$chunking['chunks_count']} safe chunks",
                     $chunking['integrity_passed'] ? '<info>Passed (Keys Preserved)</info>' : '<error>Failed</error>',
                 ],
                 [
-                    '🏷️ Tag Resilience',
+                    'Tag Resilience',
                     'Non-Redis Virtual Tagging',
                     $tagging['native_tags_supported'] ? 'Native Tag Support' : 'No Native Tag Support',
                     $tagging['virtual_tagging_resilient'] ? 'Zero-Crash Emulation' : 'Failed',
@@ -220,6 +220,6 @@ class BenchmarkCommand extends Command
         );
 
         $this->newLine();
-        $this->info("✨ AtomicCache is operating optimally on [{$driver}] driver with full stampede, compression, and chunking protection.");
+        $this->info("AtomicCache is operating optimally on [{$driver}] driver with full stampede, compression, and chunking protection.");
     }
 }

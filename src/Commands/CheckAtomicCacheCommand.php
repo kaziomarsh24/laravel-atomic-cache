@@ -227,15 +227,15 @@ class CheckAtomicCacheCommand extends Command
     protected function displayAdvisoriesBox(array $advisories): void
     {
         $count = count($advisories);
-        $this->line("<comment>💡 Invalidation Architecture Guidance ({$count} suggested " . ($count === 1 ? 'rule' : 'rules') . '):</comment>');
+        $this->line("<comment>Invalidation Architecture Guidance ({$count} suggested " . ($count === 1 ? 'rule' : 'rules') . '):</comment>');
         $this->newLine();
 
         foreach ($advisories as $item) {
             $shortModel = class_basename($item['model']);
             $this->line("  <info>• {$item['model']}:</info>");
             $this->line("    BelongsTo <comment>{$item['parent_class']}</comment> detected via <comment>{$item['relation']}()</comment>, but parent cache is not linked.");
-            $this->line("    👉 Quick Fix: Add <info>{$item['suggested_code']}</info> to {$shortModel}");
-            $this->line("    ✨ Auto-invalidates: <comment>\"{$item['suggested_tag']}\"</comment>");
+            $this->line("    Recommendation: Add <info>{$item['suggested_code']}</info> to {$shortModel}");
+            $this->line("    Auto-invalidates: <comment>\"{$item['suggested_tag']}\"</comment>");
             $this->newLine();
         }
     }

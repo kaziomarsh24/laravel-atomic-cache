@@ -406,7 +406,7 @@
                 </ul>
 
                 <h3 class="text-lg font-bold text-slate-900 dark:text-white mt-8 mb-3">
-                    ⚠️ Architectural Limitations &amp; Gotchas
+                    Architectural Limitations &amp; Gotchas
                 </h3>
 
                 <div class="space-y-6">
@@ -419,10 +419,10 @@
                             Direct query builder batch updates or deletes (e.g. <code>Product::where(...)-&gt;update(...)</code>, <code>delete()</code>, <code>insert()</code>) <strong>do not fire Eloquent model events</strong>. Consequently, <code>AutoClearsCache</code> will not automatically trigger.
                         </p>
                         <div class="relative group my-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
-                            <pre class="p-4 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// ❌ Mass updates bypass Eloquent events:</span>
+                            <pre class="p-4 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// Warning: Mass query builder updates do not fire Eloquent model events:</span>
 <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'category_id'</span>, <span class="token-number">5</span>)<span class="token-operator">-&gt;</span><span class="token-function">update</span>([<span class="token-string">'status'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'archived'</span>]);
 
-<span class="token-comment">// ✅ Solution: Clear the model table tag explicitly:</span>
+<span class="token-comment">// Solution: Clear the model table tag explicitly:</span>
 <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">clearTags</span>([<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>]); <span class="token-comment">// or AtomicCache::clearTags(['products']);</span></code></pre>
                             <button onclick="copyCode(this)" class="absolute top-2.5 right-2.5 text-xs px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
                         </div>
@@ -437,7 +437,7 @@
                             The <code>-&gt;atomicCache()</code> macro immediately terminates the query and executes <code>-&gt;get()</code>, returning an Eloquent <code>Collection</code>. You cannot chain <code>-&gt;paginate()</code> afterwards.
                         </p>
                         <div class="relative group my-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
-                            <pre class="p-4 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// ✅ Approach A: Use HasAtomicCache in your Service Layer (Recommended)</span>
+                            <pre class="p-4 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// Recommended: Use HasAtomicCache in your Service Layer</span>
 <span class="token-comment">// rememberCollection() automatically isolates request query strings and page numbers:</span>
 <span class="token-keyword">class</span> <span class="token-class">ProductService</span> {
     <span class="token-keyword">use</span> <span class="token-class">HasAtomicCache</span>;
@@ -447,7 +447,7 @@
     }
 }
 
-<span class="token-comment">// ✅ Approach B: Explicit key caching with query parameters:</span>
+<span class="token-comment">// Alternative: Explicit key caching with query parameters:</span>
 <span class="token-variable">$page</span> <span class="token-operator">=</span> <span class="token-function">request</span>()<span class="token-operator">-&gt;</span><span class="token-function">get</span>(<span class="token-string">'page'</span>, <span class="token-number">1</span>);
 <span class="token-variable">$queryHash</span> <span class="token-operator">=</span> <span class="token-function">md5</span>(<span class="token-function">serialize</span>(<span class="token-function">request</span>()<span class="token-operator">-&gt;</span><span class="token-function">only</span>([<span class="token-string">'page'</span>, <span class="token-string">'per_page'</span>, <span class="token-string">'sort'</span>, <span class="token-string">'filter'</span>])));
 <span class="token-variable">$items</span> <span class="token-operator">=</span> <span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">tags</span>([<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>])<span class="token-operator">-&gt;</span><span class="token-function">remember</span>(<span class="token-string">"products:active:{$queryHash}"</span>, <span class="token-number">3600</span>, <span class="token-keyword">fn</span>() <span class="token-operator">=&gt;</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">paginate</span>(<span class="token-number">15</span>));</code></pre>
