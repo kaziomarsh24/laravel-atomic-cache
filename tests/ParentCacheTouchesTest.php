@@ -177,6 +177,17 @@ class ParentCacheTouchesTest extends TestCase
         });
     }
 
+    protected function tearDown(): void
+    {
+        Schema::dropIfExists('test_faulty_models');
+        Schema::dropIfExists('test_comments');
+        Schema::dropIfExists('test_items');
+        Schema::dropIfExists('test_products');
+        Schema::dropIfExists('test_orders');
+        Schema::dropIfExists('test_stores');
+        parent::tearDown();
+    }
+
     /**
      * Test 1: Happy path - creating and updating a child model clears parent scoped and umbrella tags.
      */
@@ -366,5 +377,57 @@ class ParentCacheTouchesTest extends TestCase
         $this->assertEquals('store', $advisories[0]['relation']);
         $this->assertEquals("protected array \$cacheParents = ['store'];", $advisories[0]['suggested_code']);
         $this->assertStringContainsString('test_stores:', $advisories[0]['suggested_tag']);
+    }
+
+    /**
+     * Test 11: A single string declaration (e.g. protected $cacheParents = 'store') works just like an array.
+     */
+    public function test_string_single_cache_parent_declaration_works(): void
+    {
+        $singleStringModel = new class extends Model {
+            use AutoClearsCache;
+            protected $table = 'test_orders';
+            protected $cacheParents = 'store';
+            public function store(): BelongsTo
+            {
+                return $this->belongsTo(TestStoreModel::class, 'store_id');
+            }
+        };
+
+        $singleStringModel->store_id = 99;
+        $tags = $singleStringModel->resolveCacheTagsToClear();
+
+        $this->assertContains('test_stores:99:test_orders', $tags);
+        $this->assertContains('test_stores:99', $tags);
+    }
+
+    /**
+     * Test 12: Arbitrary model methods (without belongsTo) are guarded and never called by the advisory linter.
+     */
+    public function test_non_relation_method_is_not_called_by_advisories_linter(): void
+    {
+        $dangerousModel = new class extends Model {
+            use AutoClearsCache;
+            protected $table = 'test_orders';
+            public static bool $wasCalled = false;
+
+            public function dangerousOperation(): void
+            {
+                self::$wasCalled = true;
+            }
+
+            public function calculateInvoice()
+            {
+                self::$wasCalled = true;
+                return 'calculated';
+            }
+        };
+
+        $command = new \KaziOmar\AtomicCache\Commands\CheckAtomicCacheCommand();
+        $refMethod = new \ReflectionMethod($command, 'inspectModelBelongsToAdvisories');
+        $advisories = $refMethod->invoke($command, get_class($dangerousModel), $dangerousModel, []);
+
+        $this->assertEmpty($advisories);
+        $this->assertFalse($dangerousModel::$wasCalled, 'Dangerous method should never have been invoked by linter!');
     }
 }

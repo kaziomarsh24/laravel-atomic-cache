@@ -145,7 +145,7 @@ trait AutoClearsCache
                 $originalParentId = $this->getOriginal($foreignKey);
 
                 $parentIds = array_unique(array_filter([$currentParentId, $originalParentId], function ($id) {
-                    return $id !== null && $id !== '';
+                    return (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) && (string) $id !== '';
                 }));
 
                 foreach ($parentIds as $parentId) {
@@ -173,8 +173,14 @@ trait AutoClearsCache
     protected function resolveConfiguredParentRelations(): array
     {
         foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
-            if (property_exists($this, $prop) && is_array($this->{$prop})) {
-                return $this->{$prop};
+            if (property_exists($this, $prop)) {
+                $val = $this->{$prop};
+                if (is_array($val)) {
+                    return $val;
+                }
+                if (is_string($val) && trim($val) !== '') {
+                    return [trim($val)];
+                }
             }
         }
 

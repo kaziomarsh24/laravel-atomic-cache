@@ -348,20 +348,44 @@ class CheckAtomicCacheCommand extends Command
         $configuredParents = $this->getDeclaredParentRelations($instance);
 
         foreach ($refClass->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-            // Only inspect methods declared directly on user models
-            if ($method->class === Model::class || $method->class === \Illuminate\Database\Eloquent\Model::class) {
-                continue;
-            }
-
-            if ($method->getNumberOfRequiredParameters() > 0) {
+            // Only inspect non-static methods declared directly on user models (exclude Eloquent base model and magic methods)
+            if ($method->isStatic() || $method->class === Model::class || $method->class === \Illuminate\Database\Eloquent\Model::class) {
                 continue;
             }
 
             $methodName = $method->getName();
 
+            if (str_starts_with($methodName, "__") || $method->getNumberOfRequiredParameters() > 0) {
+                continue;
+            }
+
             // Skip if already declared in cacheTouches / clearsRelations / cacheParents
             if (in_array($methodName, $configuredParents, true)) {
                 continue;
+            }
+
+            // Guard 1: Skip if method has a non-relation return type (e.g. void, int, string, bool, array)
+            if ($method->hasReturnType()) {
+                $returnType = $method->getReturnType();
+                if ($returnType instanceof \ReflectionNamedType) {
+                    $typeName = $returnType->getName();
+                    if ($returnType->isBuiltin() || (!is_subclass_of($typeName, \Illuminate\Database\Eloquent\Relations\Relation::class) && $typeName !== \Illuminate\Database\Eloquent\Relations\Relation::class && $typeName !== \Illuminate\Database\Eloquent\Relations\BelongsTo::class)) {
+                        continue;
+                    }
+                }
+            }
+
+            // Guard 2: If file is accessible, inspect source code of the method to ensure it contains "belongsTo"
+            if ($method->getFileName() && file_exists($method->getFileName())) {
+                try {
+                    $fileLines = file($method->getFileName());
+                    $body = implode("", array_slice($fileLines, $method->getStartLine() - 1, $method->getEndLine() - $method->getStartLine() + 1));
+                    if (!str_contains($body, "belongsTo")) {
+                        continue;
+                    }
+                } catch (\Throwable) {
+                    // Safe fallback
+                }
             }
 
             try {
@@ -417,6 +441,9 @@ class CheckAtomicCacheCommand extends Command
                 $value = $property->getValue($instance);
                 if (is_array($value)) {
                     return $value;
+                }
+                if (is_string($value) && trim($value) !== '') {
+                    return [trim($value)];
                 }
             }
         }
