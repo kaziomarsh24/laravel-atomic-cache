@@ -96,6 +96,12 @@ class CheckAtomicCacheCommand extends Command
                     if (!empty($modelAdvisories)) {
                         $advisories = array_merge($advisories, $modelAdvisories);
                     }
+
+                    $ignoredCols = method_exists($instance, 'getCacheIgnoreColumns') ? $instance->getCacheIgnoreColumns() : [];
+                    if (!empty($ignoredCols)) {
+                        $ignoredStr = '[Ignores: ' . implode(', ', $ignoredCols) . ']';
+                        $related = ($related !== 'None' ? $related . ' ' : '') . $ignoredStr;
+                    }
                 }
 
                 $activeModels[] = [
