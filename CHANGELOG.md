@@ -5,7 +5,7 @@ All notable changes to `laravel-atomic-cache` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.4.3] - Unreleased
+## [v1.4.3] - 2026-10-27
 
 ### Fixed
 - **BackedEnum Object String Conversion in array_unique:** Unwrapped `BackedEnum` and Stringable objects to scalar values before invoking `array_unique()` to prevent PHP fatal errors (`Object of class could not be converted to string`) when updating an enum foreign key from one enum to another.
