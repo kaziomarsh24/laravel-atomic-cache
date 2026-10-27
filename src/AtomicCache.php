@@ -556,23 +556,23 @@ class AtomicCache
      */
     public function invalidating(mixed $targets, Closure $callback): mixed
     {
-        $result = $callback();
-
         $tagsToClear = $this->resolveInvalidatingTags($targets);
 
-        if (!empty($tagsToClear)) {
-            $clearFn = function () use ($tagsToClear) {
-                $this->clearTags($tagsToClear);
-            };
+        try {
+            return $callback();
+        } finally {
+            if (!empty($tagsToClear)) {
+                $clearFn = function () use ($tagsToClear) {
+                    $this->clearTags($tagsToClear);
+                };
 
-            if ($this->isInsideActiveTransaction()) {
-                $this->registerAfterCommitCallback($clearFn);
-            } else {
-                $clearFn();
+                if ($this->isInsideActiveTransaction()) {
+                    $this->registerAfterCommitCallback($clearFn);
+                } else {
+                    $clearFn();
+                }
             }
         }
-
-        return $result;
     }
 
     /**

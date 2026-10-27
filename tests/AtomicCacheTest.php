@@ -1627,9 +1627,10 @@ class AtomicCacheTest extends TestCase
         $this->assertNull(AtomicCache::tags(['custom_tag_b'])->get('key_b'));
     }
 
-    public function test_invalidating_does_not_clear_if_callback_throws(): void
+    public function test_invalidating_clears_cache_via_finally_even_if_callback_throws(): void
     {
         AtomicCache::tags(['test_orders'])->put('safe_key', 'safe_val', 3600);
+        $this->assertEquals('safe_val', AtomicCache::tags(['test_orders'])->get('safe_key'));
 
         try {
             AtomicCache::invalidating(\KaziOmar\AtomicCache\Tests\TestOrderModel::class, function () {
@@ -1639,8 +1640,8 @@ class AtomicCacheTest extends TestCase
             $this->assertEquals('Something broke!', $e->getMessage());
         }
 
-        // Cache must still exist because operation failed
-        $this->assertEquals('safe_val', AtomicCache::tags(['test_orders'])->get('safe_key'));
+        // Cache must be cleared via try-finally to prevent stale reads after partial operations
+        $this->assertNull(AtomicCache::tags(['test_orders'])->get('safe_key'));
     }
 
     public function test_invalidating_with_model_instance(): void

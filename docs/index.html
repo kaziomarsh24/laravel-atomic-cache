@@ -101,7 +101,7 @@
                     AC
                 </div>
                 <span>laravel-atomic-cache</span>
-                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 ml-1">v1.4</span>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 ml-1">v1.5</span>
             </a>
         </div>
 
@@ -752,7 +752,11 @@
 
 <span class="token-comment">// 2. SINGLE ITEM QUERY: Cache single product model</span>
 <span class="token-variable">$product</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'slug'</span>, <span class="token-variable">$slug</span>)
-    <span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-number">3600</span>);</code></pre>
+    <span class="token-operator">-&gt;</span><span class="token-function">atomicCacheFirst</span>(<span class="token-number">3600</span>);
+
+<span class="token-comment">// 3. SCOPED QUERY: Scoped tagging &amp; tenant isolation (omits broad 'orders' table tag)</span>
+<span class="token-variable">$storeOrders</span> <span class="token-operator">=</span> <span class="token-class">Order</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'store_id'</span>, <span class="token-number">5</span>)
+    <span class="token-operator">-&gt;</span><span class="token-function">atomicCache</span>(scope: <span class="token-string">'stores:5:orders'</span>);</code></pre>
                 </div>
 
                 <h3 class="text-base font-bold text-slate-900 dark:text-white mt-6 mb-2">Macro Method Arguments</h3>
@@ -790,6 +794,12 @@
                                 <td class="p-3 font-mono">bool</td>
                                 <td class="p-3 font-mono">false</td>
                                 <td class="p-3">Enable distributed locking (stampede shield) so only 1 request queries MySQL upon cache miss.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">$scope</td>
+                                <td class="p-3 font-mono">?string</td>
+                                <td class="p-3 font-mono">null</td>
+                                <td class="p-3">Scoped tag (e.g. <code>'stores:5:orders'</code>). Omits broad table tag to isolate tenant caches.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1570,14 +1580,19 @@ Schedule::command('cache:prune-stale-tags')->hourly();</code></pre>
                             <!-- Query Macros -->
                             <tr class="bg-slate-50/50 dark:bg-zinc-800/30"><td colspan="3" class="p-2.5 font-bold text-[11px] text-blue-600 dark:text-blue-400 uppercase tracking-wider">4. Eloquent &amp; DB Query Macros</td></tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">-&gt;atomicCache($keyOrTtl = null, $ttl = null, $tags = [], $lock = false)</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">-&gt;atomicCache($keyOrTtl = null, $ttl = null, $tags = [], $lock = false, $scope = null)</td>
                                 <td class="p-3 font-mono">Collection</td>
-                                <td class="p-3">List queries with automatic key fingerprinting and table tagging (defaults to configured TTL).</td>
+                                <td class="p-3">List queries with automatic key fingerprinting and table tagging. Pass <code>scope: 'stores:5:orders'</code> for scoped tenant tagging.</td>
                             </tr>
                             <tr>
-                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">-&gt;atomicCacheFirst($keyOrTtl = null, $ttl = null, $tags = [], $lock = false)</td>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">-&gt;atomicCacheFirst($keyOrTtl = null, $ttl = null, $tags = [], $lock = false, $scope = null)</td>
                                 <td class="p-3 font-mono">Model | null</td>
-                                <td class="p-3">Single-item queries with optional stampede lock protection (defaults to configured TTL).</td>
+                                <td class="p-3">Single-item queries with optional stampede lock protection and optional <code>scope:</code> parameter.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">AtomicCache::invalidating($targets, Closure $callback)</td>
+                                <td class="p-3 font-mono">mixed</td>
+                                <td class="p-3">Executes closure with guaranteed invalidation in finally, safely deferred to <code>afterCommit</code> if inside an active database transaction.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1625,6 +1640,16 @@ Schedule::command('cache:prune-stale-tags')->hourly();</code></pre>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_ENABLED</td>
                                 <td class="p-3 font-mono">true</td>
                                 <td class="p-3">Master switch to enable or disable atomic caching globally.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS</td>
+                                <td class="p-3 font-mono">true</td>
+                                <td class="p-3">Bypasses cache during active database transactions across all connections. Set <code>false</code> in <code>phpunit.xml</code> for RefreshDatabase feature tests.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_STRICT_MODE</td>
+                                <td class="p-3 font-mono">null</td>
+                                <td class="p-3">When null, active in local environment (<code>app()-&gt;isLocal() === true</code>). Throws descriptive <code>InvalidArgumentException</code> on invalid <code>$cacheParents</code> declarations. Set <code>true</code> in <code>phpunit.xml</code> to enforce in CI/testing.</td>
                             </tr>
                             <tr>
                                 <td class="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">ATOMIC_CACHE_DEFAULT_TTL</td>

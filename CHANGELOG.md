@@ -5,7 +5,7 @@ All notable changes to `laravel-atomic-cache` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.5.0] - Unreleased
 
 ### Added
 - **Active Database Transaction Guard (`bypass_during_transactions`):** Automatically detects active uncommitted database transactions across all opened database connections and bypasses cache reads and writes to eliminate dirty reads and phantom cache entries upon rollback. Includes fluent overrides `AtomicCache::withoutTransactionBypass()` and `withTransactionBypass()`.
@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Scoped Query Macros (`scope:` parameter):** Added `scope:` parameter to `->atomicCache()` and `->atomicCacheFirst()` query builder macros to isolate multi-tenant or parent-scoped query caches without clearing unrelated tenant collections.
 - **Parent Relation Strict Mode (`atomic-cache.strict_mode`):** Enforces strict validation of declared `$cacheParents` relations during local development, throwing descriptive `InvalidArgumentException`s when relation methods are misspelled, missing, require parameters, or when class names are passed instead of method names.
 - **Architecture Linter Enhancements:** Updated `atomic-cache:check` CLI command to display declared `$cacheIgnoreColumns` alongside active models.
-- **Universal OCC Version Tokens Across All Drivers:** Resolved native Redis tag OCC limitation by implementing universal atomic UUID version tokens (`__vt__{$tag}`) rotated during `clearTags()` across all cache drivers (Redis, Memcached, File, Database, Array). Minimizes stale write windows to near-zero by validating tokens and capturing pre-computation version hashes directly into storage keys to close TOCTOU race condition gaps. Also optimized version token reads using `$store->many()` batch fetching in a single round-trip.
+- **Universal OCC Version Tokens Across All Drivers:** Resolved native Redis tag OCC limitation by implementing universal atomic UUID version tokens (`atomic:__tag_v__:{tag}`) rotated during `clearTags()` across all cache drivers (Redis, Memcached, File, Database, Array). Closes TOCTOU race condition gaps completely on virtual tag drivers via pre-computation version-baked keys, and minimizes stale write windows to microsecond intervals on native tag stores (Redis/Memcached). Also optimized version token reads using `$store->many()` batch fetching in a single round-trip.
 - **Multi-Tag CLI Invalidation (`--tags`):** Added `{--tags=}` option to `ClearAtomicCacheCommand` (`php artisan atomic-cache:clear --tags=users,orders`) to support comma-separated multi-tag purging.
 - **Model Manual Flush Helpers:** Added `$model->clearCache()` instance method (expressive alias for `clearModelCacheOnCommit()`) and `Model::flushCache()` static method in `AutoClearsCache` trait for single-line manual cache invalidation after bulk updates, mass deletes, or direct SQL queries.
 - **Class-Level In-Memory Static Cache:** Added `static::$configuredParentRelationsCache` in `AutoClearsCache` to cache resolved parent relations per model class, eliminating property inspection overhead during repeated batch saves.

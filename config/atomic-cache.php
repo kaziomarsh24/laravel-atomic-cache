@@ -22,6 +22,11 @@ return [
     | transaction (DB::transactionLevel() > 0). This prevents dirty reads and
     | phantom cache entries when transactions are rolled back.
     |
+    | NOTE FOR AUTOMATED TESTS: If your feature tests use RefreshDatabase or
+    | DatabaseTransactions traits, tests run inside a transaction by default.
+    | Set ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS=false in phpunit.xml if you
+    | want to assert cache hits inside transaction-wrapped tests.
+    |
     */
     'bypass_during_transactions' => env('ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS', true),
 
@@ -30,10 +35,11 @@ return [
     | Strict Mode (Parent Relations Validation)
     |--------------------------------------------------------------------------
     |
-    | When enabled (or when null in local development), declaring invalid
-    | parent relations (typos, missing methods, non-BelongsTo relations, or
-    | methods requiring parameters) throws an \InvalidArgumentException to
-    | catch bugs early. In production, issues are logged and skipped safely.
+    | When enabled (or when null in local development where app()->isLocal() is true),
+    | declaring invalid parent relations (typos, missing methods, non-BelongsTo
+    | relations, or methods requiring parameters) throws an \InvalidArgumentException
+    | to catch bugs early. In production, issues are logged and skipped safely.
+    | Set ATOMIC_CACHE_STRICT_MODE=true in phpunit.xml to enforce in CI/testing.
     |
     */
     'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null),

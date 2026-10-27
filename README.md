@@ -403,7 +403,9 @@ When `ATOMIC_CACHE_DEDUPLICATION_ENABLED=true` is enabled in `.env`, Atomic Cach
 #### How it works:
 If a heavy calculation takes 4 seconds, and during second 2 an admin updates the database (flushing the tag), writing the 4-second-old result to the cache at second 4 would overwrite the update with stale data.
 
-Atomic Cache dramatically minimizes stale cache writes using Optimistic Concurrency Control (OCC). It captures universal UUID version tokens per tag before computing the value. If a tag is cleared while a closure is executing, the token mismatch triggers an OCC discard, safely dropping the stale write instead of repopulating the cache with outdated data. Furthermore, virtual store writes embed the pre-computation version hash into the storage key, ensuring that even in race conditions, stale writes fall into orphaned keys that are never read.
+Atomic Cache dramatically minimizes stale cache writes using Optimistic Concurrency Control (OCC). It captures universal UUID version tokens per tag before computing the value. If a tag is cleared while a closure is executing, the token mismatch triggers an OCC discard, safely dropping the stale write instead of repopulating the cache with outdated data.
+
+On virtual tag drivers (File, Database), TOCTOU race conditions are closed completely by baking the pre-computation version hash into the storage key. On native taggable stores (Redis, Memcached), the stale write window is minimized to microsecond intervals.
 
 #### What will break it / What causes it not to work properly:
 - **Direct `Cache::tags([...])->flush()` bypass:** OCC relies on `AtomicCache::clearTags()`, `flushTags()`, or model events rotating the tag version token. If application code or a third-party package bypasses Atomic Cache and calls Laravel's native `Cache::tags([...])->flush()` directly, the native tags are flushed but Atomic Cache's version tokens are not rotated.
@@ -444,6 +446,20 @@ To explicitly disable this bypass for a specific operation or testing:
 ```php
 AtomicCache::withoutTransactionBypass()->remember('key', 3600, fn() => ...);
 ```
+
+> [!WARNING]
+> **Important Testing Warning (`RefreshDatabase` & `DatabaseTransactions`):**
+> If your feature tests use Laravel's `RefreshDatabase` or `DatabaseTransactions` traits, the entire test runs inside an uncommitted database transaction (`transactionLevel() === 1`).
+> Because `bypass_during_transactions` is enabled by default, cache `remember()` calls will **always bypass cache** during those tests!
+> To test cache hits inside transactional feature tests, disable the bypass in your `phpunit.xml`:
+> ```xml
+> <env name="ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS" value="false"/>
+> ```
+> or use `AtomicCache::withoutTransactionBypass()->remember(...)`.
+>
+> **Transaction Middleware Alert:** If your application uses HTTP middleware that wraps every request in a database transaction (`DB::beginTransaction() ... DB::commit()`), cache `remember()` will be bypassed by default unless `ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS=false` is configured.
+>
+> **Multi-Connection Detection:** The guard checks all open connections (`DB::getConnections()`). If *any* open database connection has an active transaction, cache operations are bypassed.
 
 ---
 
@@ -558,9 +574,15 @@ class Product extends Model
 ```
 
 > [!NOTE]
-> **Automatic Timestamp Exclusion:** Laravel automatically dirties the `updated_at` column on save. Atomic Cache automatically ignores `updated_at` when evaluating `$cacheIgnoreColumns`.
+> **Automatic Timestamp Exclusion:** Laravel automatically dirties the `updated_at` column on save. Atomic Cache automatically ignores `updated_at` when evaluating `$cacheIgnoreColumns`. If you call `$model->touch()`, Atomic Cache verifies that no declared ignored column changed and correctly flushes the collection cache.
 >
 > **Create & Delete Safety:** `$cacheIgnoreColumns` only applies to `updated` events. Model `created`, `deleted`, and `restored` events always invalidate collection tags regardless of this setting.
+>
+> [!WARNING]
+> **Stale Display & Sorting Warning:**
+> Columns added to `$cacheIgnoreColumns` will remain stale in cached query results and listings until their TTL expires.
+> For example, if you ignore `view_count`, any cached query that selects, filters (`where`), or orders by (`orderBy('view_count')`) will display the old view count or stale ordering until refreshed.
+> **Rule of Thumb:** Only ignore columns that are not displayed in cached queries or critical sorting operations (e.g. internal telemetry, session metadata, or live counters rendered via dedicated un-cached endpoints).
 
 ---
 
@@ -569,11 +591,13 @@ class Product extends Model
 Catch typos and invalid relationship declarations early during local development:
 ```php
 // config/atomic-cache.php
-'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null), // null = active in 'local' and 'testing'
+'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null), // null = active in local (app()->isLocal()) // null = active in local environment (app()->isLocal() === true)
 ```
 
-When strict mode is enabled, invalid declarations throw an immediate `\InvalidArgumentException` with clear guidance:
+When strict mode is enabled (default in local development, or by setting `ATOMIC_CACHE_STRICT_MODE=true` in `phpunit.xml`), invalid declarations throw an immediate `\InvalidArgumentException` with clear guidance:
 - Typo in method name (`$cacheParents = ['strore']`): throws missing method error.
+- Class name passed instead of relation method (`$cacheParents = [Store::class]`): detects class name and asks: *"Did you pass a class name instead of the BelongsTo relation method name?"*.
+- Invalid type passed (`$cacheParents = [123]`): throws invalid type error.
 - Method requiring parameters (`public function store($type)`): throws required parameter error.
 - Non-`BelongsTo` relations (`hasMany`, `morphTo`): throws relation type error.
 
@@ -595,7 +619,7 @@ AtomicCache::invalidating([Order::class, Product::class], function () {
     DB::table('products')->where('stock', 0)->update(['status' => 'out_of_stock']);
 });
 ```
-If the transaction rolls back or the closure throws an exception, cache invalidation is cleanly aborted.
+Uses a `try/finally` guarantee: outside a transaction, invalidation is guaranteed in a `finally` block even if the closure throws an exception, preventing stale reads after partial database mutations. Inside an active database transaction, invalidation is safely registered via `DB::afterCommit()`. If the transaction rolls back, cache is untouched.
 
 ---
 
@@ -607,7 +631,7 @@ If the transaction rolls back or the closure throws an exception, cache invalida
   - *Solution:* Manually call `$model->clearCache()` if you need invalidation after quiet saves.
 - **Pivot table changes:** Many-to-many `attach()`, `detach()`, or `sync()` operations on relationships do not fire parent model events.
   - *Solution:* Call `AtomicCache::clearTags([Product::class, Category::class])` explicitly after syncing.
-- **`$cacheParents` only supports `BelongsTo`:** Declaring `hasMany`, `hasOne`, `belongsToMany`, or `morphTo` in `$cacheParents` is not supported and will be silently ignored.
+- **`$cacheParents` only supports `BelongsTo`:** Declaring `hasMany`, `hasOne`, `belongsToMany`, or `morphTo` in `$cacheParents` will throw an `InvalidArgumentException` in strict mode (local/testing) or log a warning in production.
 - **Custom owner keys are skipped:** If a relationship uses a custom non-primary owner key (e.g. `belongsTo(Store::class, 'store_slug', 'slug')`), it is skipped because the child model holds a string slug rather than the parent's primary ID, which would create mismatched umbrella tags (`stores:nike` vs `stores:5`).
 - **Grandparent relations do not auto-cascade (`$touches` does not work):** Multi-level hierarchies (e.g. `OrderItem -> Order -> Store`) do not automatically cascade from item to store. **Crucially, Laravel's native `protected $touches = ['order']` property executes a raw database update (`rawUpdate`) and does NOT fire Eloquent model events.** Thus, declaring `$touches` will not trigger `AutoClearsCache` on the parent!
   - *Solution 1 (Recommended - Explicit Method):* Define `getRelatedCacheTags()` on the child model:
@@ -648,7 +672,7 @@ $product = Product::where('slug', $slug)->atomicCacheFirst(3600);
 // 3. Custom key mode:
 $bestSellers = Product::where('sales', '>', 500)->atomicCache('bestsellers', 7200);
 
-// 4. Tenant & Parent-Scoped Queries (Complete Tenant Isolation):
+// 4. Scoped Tagging & Tenant Isolation (Omits broad 'orders' table tag):
 // Omits the broad 'orders' table tag and tags strictly with the scoped tag:
 $storeOrders = Order::where('store_id', 5)->atomicCache(scope: 'stores:5:orders');
 $storeFirst = Order::where('store_id', 5)->latest()->atomicCacheFirst(scope: 'stores:5:orders');
@@ -668,6 +692,15 @@ $userOrders = $user->orders()->latest()->atomicCache(3600);
 - **Mass updates will not clear query macro caches:**
   - If you cache a query via `Product::where('active', 1)->atomicCache()`, running `Product::where('active', 1)->update(['price' => 20])` will not clear the cache because no Eloquent event fires.
   - *Solution:* Call `Product::flushCache();` after the update.
+- **`scope:` queries and mass updates:**
+  - `Order::flushCache()` or `invalidating([Order::class], ...)` only invalidates the base `orders` collection tag. Scoped queries cached via `scope: 'stores:5:orders'` will **not** be cleared by broad table flushes.
+  - *Solution:* Invalidate the scoped tag explicitly during mass updates:
+    `AtomicCache::invalidating(['stores:5:orders', Order::class], fn() => ...);` or `AtomicCache::clearTags(['stores:5:orders'])`.
+- **`scope:` queries omit automatic joins & require `$cacheParents`:**
+  - When `scope:` is passed, automatic join-table tagging is omitted in favor of your explicit scope tag. Furthermore, model lifecycle events (`Order::create()`) will only invalidate the scoped cache if the model defines a matching `$cacheParents` relation (e.g. `protected array $cacheParents = ['store'];`).
+- **Eager loading does not auto-tag related tables:**
+  - Eager-loaded relationships (`Product::with('category')->atomicCache()`) are included in the query hash fingerprint, but related tables (`categories`) are **not** auto-tagged. If a category is updated, the product query cache will not automatically invalidate.
+  - *Solution:* Pass related table tags explicitly: `->atomicCache(3600, tags: ['categories'])`.
 - **Raw SQL subqueries are not auto-tagged:**
   - While standard `join()` and `leftJoin()` methods are inspected and auto-tagged, raw SQL joins or subqueries (`whereRaw('exists (select 1 from categories ...)')`) cannot be parsed for table names.
   - *Solution:* Pass additional table tags explicitly: `->atomicCache(3600, tags: ['categories'])`.
@@ -863,7 +896,7 @@ Publish `config/atomic-cache.php` to customize package behavior:
 return [
     'enabled' => env('ATOMIC_CACHE_ENABLED', true),
     'bypass_during_transactions' => env('ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS', true),
-    'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null),
+    'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null), // null = active in local (app()->isLocal())
     'default_ttl' => env('ATOMIC_CACHE_DEFAULT_TTL', 3600),
     'store' => env('ATOMIC_CACHE_STORE', null),
     'prefix' => env('ATOMIC_CACHE_PREFIX', 'atomic'),
@@ -990,7 +1023,7 @@ Atomic Cache adheres to Semantic Versioning:
 
 | Release | Change | Impacted Workloads | Recommended Action |
 | :--- | :--- | :--- | :--- |
-| **`v1.4.4` (Unreleased)** | **Transaction Guard, Scoped Query Macro, $cacheIgnoreColumns, Strict Mode, and Universal OCC** | All workloads. | OCC now operates universally via atomic UUID version tokens across all drivers. Added Transaction Guard (`bypass_during_transactions`), `$cacheIgnoreColumns` for counter updates, Strict Mode validation, `scope:` query macro parameter, and `AtomicCache::invalidating()` wrapper. |
+| **`v1.5.0` (Unreleased)** | **Transaction Guard, Scoped Query Macro, $cacheIgnoreColumns, Strict Mode, and Universal OCC** | All workloads. | OCC now operates universally via atomic UUID version tokens across all drivers. Added Transaction Guard (`bypass_during_transactions`), `$cacheIgnoreColumns` for counter updates, Strict Mode validation, `scope:` query macro parameter, and `AtomicCache::invalidating()` wrapper. |
 | **`v1.4.3`** | **BackedEnum Foreign Keys & Magic `__isset` Bypass** | Models using PHP 8.1+ Enums as foreign keys. | Foreign keys backed by enums are cleanly unwrapped before tag generation. Fixed reflection lookups to avoid triggering Eloquent magic `__isset`. |
 | **`v1.4.2`** | **Transaction-Safe Deferred Parent Invalidation** | Models using `$cacheParents` updated inside `DB::transaction(...)`. | Tags are resolved at event dispatch time before `syncOriginal()`, capturing old & new parent keys accurately after commit. |
 | **`v1.4.0`** | **Smart Parent Invalidation & Architecture Linter** | Applications declaring parent relationships (`$cacheParents`). | Run `php artisan atomic-cache:check` to audit Eloquent relationship caching health. |
