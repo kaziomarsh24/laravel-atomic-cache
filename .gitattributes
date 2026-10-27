@@ -4,3 +4,13 @@
 # Windows scripts
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Exclude development and documentation files from Composer distribution packages
+/.github export-ignore
+/docs export-ignore
+/tests export-ignore
+.editorconfig export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+phpunit.xml export-ignore
+phpunit.xml.dist export-ignore
