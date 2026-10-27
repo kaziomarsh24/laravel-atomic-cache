@@ -19,21 +19,21 @@ trait AutoClearsCache
     public static function bootAutoClearsCache(): void
     {
         static::created(function ($model) {
-            $model->clearModelCacheOnCommit();
+            $model->clearModelCacheOnCommit(false);
         });
 
         static::updated(function ($model) {
-            $model->clearModelCacheOnCommit();
+            $model->clearModelCacheOnCommit(true);
         });
 
         static::deleted(function ($model) {
-            $model->clearModelCacheOnCommit();
+            $model->clearModelCacheOnCommit(false);
         });
 
         // Safely register 'restored' event only if the Model uses SoftDeletes
         if (method_exists(static::class, 'restored')) {
             static::restored(function ($model) {
-                $model->clearModelCacheOnCommit();
+                $model->clearModelCacheOnCommit(false);
             });
         }
     }
@@ -43,9 +43,9 @@ trait AutoClearsCache
      * Evaluates cache tags immediately so original/dirty attribute states (e.g. changed foreign keys)
      * are captured before finishSave() executes syncOriginal().
      */
-    public function clearModelCacheOnCommit(): void
+    public function clearModelCacheOnCommit(bool $isUpdate = false): void
     {
-        $tagsToClear = $this->resolveCacheTagsToClear();
+        $tagsToClear = $this->resolveCacheTagsToClear($isUpdate);
         if (empty($tagsToClear)) {
             return;
         }
@@ -84,7 +84,7 @@ trait AutoClearsCache
     /**
      * Resolve all cache tags that should be invalidated for this model instance.
      */
-    public function resolveCacheTagsToClear(): array
+    public function resolveCacheTagsToClear(bool $isUpdate = false): array
     {
         $table = $this->getTable();
         $id = $this->getKey();
@@ -94,6 +94,11 @@ trait AutoClearsCache
         // 1. Invalidate single item tag: "users:12" (only if key is present)
         if ($id !== null && $id !== '') {
             $tags[] = "{$table}:{$id}";
+        }
+
+        // Optimization: If this is an update and only ignored columns changed, skip collection and parent invalidation
+        if ($isUpdate && $this->onlyIgnoredColumnsChanged()) {
+            return array_values(array_unique(array_filter($tags)));
         }
 
         // 2. Invalidate collection tag: "users"
@@ -121,12 +126,67 @@ trait AutoClearsCache
      * Resolve cache tags for declared parent relations.
      * Generates both granular child tags ("stores:5:orders") and parent umbrella tags ("stores:5").
      */
+
+    /**
+     * Get list of columns that should not trigger collection-level cache clearing on update.
+     */
+    public function getCacheIgnoreColumns(): array
+    {
+        if (property_exists($this, 'cacheIgnoreColumns')) {
+            try {
+                $ref = new \ReflectionProperty($this, 'cacheIgnoreColumns');
+                if ($ref->isInitialized($this)) {
+                    $val = $ref->getValue($this);
+                    if (is_array($val)) {
+                        return $val;
+                    }
+                    if (is_string($val) && trim($val) !== '') {
+                        return [trim($val)];
+                    }
+                }
+            } catch (\Throwable) {
+                return [];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Determine if the update only affected ignored cache columns (and the updated_at timestamp).
+     */
+    public function onlyIgnoredColumnsChanged(): bool
+    {
+        $ignored = $this->getCacheIgnoreColumns();
+        if (empty($ignored)) {
+            return false;
+        }
+
+        $changes = array_keys($this->getChanges());
+        if (empty($changes)) {
+            return false;
+        }
+
+        $updatedAtCol = $this->usesTimestamps() ? $this->getUpdatedAtColumn() : null;
+
+        $significantChanges = array_filter($changes, function ($col) use ($updatedAtCol, $ignored) {
+            if ($updatedAtCol !== null && $col === $updatedAtCol) {
+                return false;
+            }
+            return !in_array($col, $ignored, true);
+        });
+
+        return empty($significantChanges);
+    }
+
     protected function resolveParentRelationCacheTags(): array
     {
         $relations = $this->resolveConfiguredParentRelations();
         if (empty($relations)) {
             return [];
         }
+
+        $this->validateDeclaredParentRelations($relations);
 
         $tags = [];
         $childTable = $this->getTable();
@@ -214,11 +274,117 @@ trait AutoClearsCache
     protected static array $configuredParentRelationsCache = [];
 
     /**
+     * In-memory cache of validated model classes to avoid repeating reflection checks.
+     */
+    protected static array $validatedParentRelationModels = [];
+
+    /**
      * Resolve configured parent relation names supporting all three developer conventions:
      * - $cacheParents = ['store']   (Standard package convention - Recommended)
      * - $cacheTouches = ['store']   (Laravel $touches style alias)
      * - $clearsRelations = ['store'] (Expressive clean English alias)
      */
+
+    /**
+     * Determine if parent relation strict mode is enabled.
+     */
+    protected static function isParentRelationStrictModeEnabled(): bool
+    {
+        $strict = config('atomic-cache.strict_mode');
+
+        if (is_bool($strict)) {
+            return $strict;
+        }
+
+        if (function_exists('app') && app()->isLocal()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Validate declared parent relations for this model.
+     * Throws \InvalidArgumentException in strict mode if any relation definition is invalid.
+     */
+    protected function validateDeclaredParentRelations(array $relations): void
+    {
+        $class = static::class;
+        if (isset(static::$validatedParentRelationModels[$class])) {
+            return;
+        }
+
+        $isStrict = static::isParentRelationStrictModeEnabled();
+
+        foreach ($relations as $relationName) {
+            if (!is_string($relationName) || trim($relationName) === '') {
+                continue;
+            }
+
+            $relationName = trim($relationName);
+
+            if (!method_exists($this, $relationName)) {
+                if ($isStrict) {
+                    throw new \InvalidArgumentException(
+                        "Model [{$class}] declared cache parent relation ['{$relationName}'], but method {$relationName}() does not exist on the model."
+                    );
+                }
+                \Illuminate\Support\Facades\Log::warning(
+                    "[AtomicCache] Model [{$class}] declared cache parent relation ['{$relationName}'], but method {$relationName}() does not exist."
+                );
+                continue;
+            }
+
+            $refMethod = new \ReflectionMethod($this, $relationName);
+            if ($refMethod->getNumberOfRequiredParameters() > 0) {
+                if ($isStrict) {
+                    throw new \InvalidArgumentException(
+                        "Model [{$class}] declared cache parent relation ['{$relationName}'], but method {$relationName}() requires parameters."
+                    );
+                }
+                \Illuminate\Support\Facades\Log::warning(
+                    "[AtomicCache] Model [{$class}] declared cache parent relation ['{$relationName}'], but method requires parameters."
+                );
+                continue;
+            }
+
+            try {
+                $relation = $this->{$relationName}();
+
+                if (!($relation instanceof \Illuminate\Database\Eloquent\Relations\BelongsTo)
+                    || ($relation instanceof \Illuminate\Database\Eloquent\Relations\MorphTo)) {
+                    if ($isStrict) {
+                        throw new \InvalidArgumentException(
+                            "Model [{$class}] declared cache parent relation ['{$relationName}'], but relation is not an instance of BelongsTo."
+                        );
+                    }
+                    \Illuminate\Support\Facades\Log::warning(
+                        "[AtomicCache] Model [{$class}] declared cache parent relation ['{$relationName}'], but it is not a BelongsTo relation."
+                    );
+                    continue;
+                }
+
+                $parentModel = $relation->getRelated();
+                if ($relation->getOwnerKeyName() !== $parentModel->getKeyName()) {
+                    if ($isStrict) {
+                        throw new \InvalidArgumentException(
+                            "Model [{$class}] declared cache parent relation ['{$relationName}'] with custom owner key ['" . $relation->getOwnerKeyName() . "'] that does not match primary key ['" . $parentModel->getKeyName() . "']."
+                        );
+                    }
+                    \Illuminate\Support\Facades\Log::warning(
+                        "[AtomicCache] Model [{$class}] declared cache parent relation ['{$relationName}'] with non-primary owner key."
+                    );
+                }
+            } catch (\InvalidArgumentException $e) {
+                throw $e;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        static::$validatedParentRelationModels[$class] = true;
+    }
+
     protected function resolveConfiguredParentRelations(): array
     {
         $class = static::class;
@@ -260,5 +426,6 @@ trait AutoClearsCache
     public static function flushConfiguredParentRelationsCache(): void
     {
         static::$configuredParentRelationsCache = [];
+        static::$validatedParentRelationModels = [];
     }
 }

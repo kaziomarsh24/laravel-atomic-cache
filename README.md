@@ -420,6 +420,33 @@ If a cached payload is corrupted, truncated by memory limits, or missing a chunk
 
 ---
 
+### 1.12 Transaction Guard (Active Database Transaction Bypass)
+
+#### How it works:
+Running cache `remember()` inside an uncommitted database transaction (`DB::transaction(...)`) poses a serious dirty-read and phantom-cache risk: if the transaction rolls back, uncommitted data written to cache becomes a ghost entry that misleads users for hours.
+
+When `bypass_during_transactions` is enabled (default: `true`), Atomic Cache detects active transactions across all opened database connections (`DB::transactionLevel() > 0`). In this state, `remember()` **bypasses reading and writing to cache entirely**, executing the closure directly and returning fresh database data. If the transaction rolls back, no phantom cache remains.
+
+```php
+DB::transaction(function () {
+    $order = Order::create([...]);
+
+    // Bypasses cache: returns fresh $order without writing to cache store
+    $latest = AtomicCache::remember('latest_order', 3600, fn() => Order::latest()->first());
+
+    if ($someError) {
+        throw new \Exception("Rollback!"); // No phantom cache remains in Redis!
+    }
+});
+```
+
+To explicitly disable this bypass for a specific operation or testing:
+```php
+AtomicCache::withoutTransactionBypass()->remember('key', 3600, fn() => ...);
+```
+
+---
+
 ## Layer 2: Eloquent Model Lifecycle (`AutoClearsCache`)
 
 Add `AutoClearsCache` to any Eloquent model to automate invalidations.
@@ -512,7 +539,67 @@ Product::flushCache(); // Wipes all "products" table collection caches in one li
 
 ---
 
-### 2.4 Critical Rules & What Breaks Model Auto-Invalidation
+### 2.4 High-Frequency Update Columns (`$cacheIgnoreColumns`)
+
+When updating counters or analytics (e.g. `view_count`, `last_login_at`, `login_count`), invalidating the entire table collection cache (`products`) or parent cache (`stores:1:products`) on every single page view causes severe cache churn.
+
+Declare `$cacheIgnoreColumns` on your model to protect collections:
+```php
+class Product extends Model
+{
+    use AutoClearsCache;
+
+    protected array $cacheParents = ['store'];
+
+    // Only single-item cache ('products:42') is cleared when these change.
+    // Heavy table collections ('products') and parent tags ('stores:1:products') remain cached:
+    protected array $cacheIgnoreColumns = ['view_count', 'meta'];
+}
+```
+
+> [!NOTE]
+> **Automatic Timestamp Exclusion:** Laravel automatically dirties the `updated_at` column on save. Atomic Cache automatically ignores `updated_at` when evaluating `$cacheIgnoreColumns`.
+>
+> **Create & Delete Safety:** `$cacheIgnoreColumns` only applies to `updated` events. Model `created`, `deleted`, and `restored` events always invalidate collection tags regardless of this setting.
+
+---
+
+### 2.5 Strict Mode for Parent Relations (`strict_mode`)
+
+Catch typos and invalid relationship declarations early during local development:
+```php
+// config/atomic-cache.php
+'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null), // null = active in 'local' and 'testing'
+```
+
+When strict mode is enabled, invalid declarations throw an immediate `\InvalidArgumentException` with clear guidance:
+- Typo in method name (`$cacheParents = ['strore']`): throws missing method error.
+- Method requiring parameters (`public function store($type)`): throws required parameter error.
+- Non-`BelongsTo` relations (`hasMany`, `morphTo`): throws relation type error.
+
+In production environments, strict mode safely logs a warning and gracefully continues without interrupting customer transactions.
+
+---
+
+### 2.6 Transaction-Safe Bulk Invalidation (`AtomicCache::invalidating`)
+
+For bulk updates, mass deletes, or service workflows using direct DB queries, wrap execution with `AtomicCache::invalidating()`:
+
+```php
+use KaziOmar\AtomicCache\Facades\AtomicCache;
+
+// Outside transaction: flushes immediately
+// Inside transaction: automatically defers invalidation to DB::afterCommit!
+AtomicCache::invalidating([Order::class, Product::class], function () {
+    DB::table('orders')->where('status', 'draft')->delete();
+    DB::table('products')->where('stock', 0)->update(['status' => 'out_of_stock']);
+});
+```
+If the transaction rolls back or the closure throws an exception, cache invalidation is cleanly aborted.
+
+---
+
+### 2.7 Critical Rules & What Breaks Model Auto-Invalidation
 
 - **Mass queries bypass model events:** Direct query builder mutations (`Product::where(...)->update(...)`, `delete()`, or `DB::table('products')->update(...)`) **do not fire Eloquent events**. AutoClearsCache cannot detect them. 
   - *Solution:* Run `Product::flushCache();` right after your bulk query.
@@ -561,7 +648,12 @@ $product = Product::where('slug', $slug)->atomicCacheFirst(3600);
 // 3. Custom key mode:
 $bestSellers = Product::where('sales', '>', 500)->atomicCache('bestsellers', 7200);
 
-// 4. Works on DB facade and relationships:
+// 4. Tenant & Parent-Scoped Queries (Complete Tenant Isolation):
+// Omits the broad 'orders' table tag and tags strictly with the scoped tag:
+$storeOrders = Order::where('store_id', 5)->atomicCache(scope: 'stores:5:orders');
+$storeFirst = Order::where('store_id', 5)->latest()->atomicCacheFirst(scope: 'stores:5:orders');
+
+// 5. Works on DB facade and relationships:
 $stats = DB::table('orders')->where('status', 'paid')->atomicCache(1800);
 $userOrders = $user->orders()->latest()->atomicCache(3600);
 ```
@@ -770,6 +862,8 @@ Publish `config/atomic-cache.php` to customize package behavior:
 ```php
 return [
     'enabled' => env('ATOMIC_CACHE_ENABLED', true),
+    'bypass_during_transactions' => env('ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS', true),
+    'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null),
     'default_ttl' => env('ATOMIC_CACHE_DEFAULT_TTL', 3600),
     'store' => env('ATOMIC_CACHE_STORE', null),
     'prefix' => env('ATOMIC_CACHE_PREFIX', 'atomic'),
@@ -896,7 +990,7 @@ Atomic Cache adheres to Semantic Versioning:
 
 | Release | Change | Impacted Workloads | Recommended Action |
 | :--- | :--- | :--- | :--- |
-| **`v1.4.4` (Unreleased)** | **Universal OCC, Model Flush Helpers, and `--tags` CLI option** | All workloads. | OCC now operates universally via atomic UUID version tokens across all drivers (including Redis). Added `$model->clearCache()` instance helper, `Model::flushCache()` static helper, and `--tags=` CLI flag. |
+| **`v1.4.4` (Unreleased)** | **Transaction Guard, Scoped Query Macro, $cacheIgnoreColumns, Strict Mode, and Universal OCC** | All workloads. | OCC now operates universally via atomic UUID version tokens across all drivers. Added Transaction Guard (`bypass_during_transactions`), `$cacheIgnoreColumns` for counter updates, Strict Mode validation, `scope:` query macro parameter, and `AtomicCache::invalidating()` wrapper. |
 | **`v1.4.3`** | **BackedEnum Foreign Keys & Magic `__isset` Bypass** | Models using PHP 8.1+ Enums as foreign keys. | Foreign keys backed by enums are cleanly unwrapped before tag generation. Fixed reflection lookups to avoid triggering Eloquent magic `__isset`. |
 | **`v1.4.2`** | **Transaction-Safe Deferred Parent Invalidation** | Models using `$cacheParents` updated inside `DB::transaction(...)`. | Tags are resolved at event dispatch time before `syncOriginal()`, capturing old & new parent keys accurately after commit. |
 | **`v1.4.0`** | **Smart Parent Invalidation & Architecture Linter** | Applications declaring parent relationships (`$cacheParents`). | Run `php artisan atomic-cache:check` to audit Eloquent relationship caching health. |

@@ -1410,4 +1410,252 @@ class AtomicCacheTest extends TestCase
         // Stack should be completely unwound down to initial level
         $this->assertEquals($initialLevel, ob_get_level());
     }
+
+    public function test_remember_bypasses_cache_inside_active_database_transaction(): void
+    {
+        $executionCount = 0;
+        $callback = function () use (&$executionCount) {
+            $executionCount++;
+            return 'tx_data_' . $executionCount;
+        };
+
+        // 1. Outside transaction: remember caches the value
+        $val1 = AtomicCache::remember('tx_test_key', 60, $callback);
+        $this->assertEquals('tx_data_1', $val1);
+        $this->assertEquals(1, $executionCount);
+        $this->assertTrue(AtomicCache::has('tx_test_key'));
+
+        AtomicCache::forget('tx_test_key');
+        $this->assertFalse(AtomicCache::has('tx_test_key'));
+
+        // 2. Inside transaction: remember executes callback but bypasses writing to cache
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            $this->assertTrue(AtomicCache::isInsideActiveTransaction());
+
+            $val2 = AtomicCache::remember('tx_test_key', 60, $callback);
+            $this->assertEquals('tx_data_2', $val2);
+            $this->assertEquals(2, $executionCount);
+
+            // Crucial assertion: the uncommitted state was NOT written to cache
+            $this->assertFalse(AtomicCache::has('tx_test_key'), 'Cache should not have the key during active transaction');
+
+            // Running remember again inside the same transaction runs the callback again
+            $val3 = AtomicCache::remember('tx_test_key', 60, $callback);
+            $this->assertEquals('tx_data_3', $val3);
+            $this->assertEquals(3, $executionCount);
+        } finally {
+            \Illuminate\Support\Facades\DB::rollBack();
+        }
+
+        // 3. After rollback: key was never cached, so no phantom data remains
+        $this->assertFalse(AtomicCache::isInsideActiveTransaction());
+        $this->assertFalse(AtomicCache::has('tx_test_key'));
+
+        // 4. Outside transaction again: caching resumes normally
+        $val4 = AtomicCache::remember('tx_test_key', 60, $callback);
+        $this->assertEquals('tx_data_4', $val4);
+        $this->assertEquals(4, $executionCount);
+        $this->assertTrue(AtomicCache::has('tx_test_key'));
+
+        // Subsequent call outside transaction hits cache
+        $val5 = AtomicCache::remember('tx_test_key', 60, $callback);
+        $this->assertEquals('tx_data_4', $val5);
+        $this->assertEquals(4, $executionCount);
+
+        AtomicCache::forget('tx_test_key');
+    }
+
+    public function test_transaction_rollback_leaves_no_phantom_cache(): void
+    {
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () {
+                AtomicCache::remember('phantom_order_key', 3600, function () {
+                    return ['order_id' => 999, 'status' => 'uncommitted'];
+                });
+
+                throw new \RuntimeException('Simulated transaction failure & rollback');
+            });
+        } catch (\RuntimeException $e) {
+            $this->assertEquals('Simulated transaction failure & rollback', $e->getMessage());
+        }
+
+        // Must be completely clean: no phantom cache entry
+        $this->assertFalse(AtomicCache::has('phantom_order_key'));
+        $this->assertNull(AtomicCache::get('phantom_order_key'));
+    }
+
+    public function test_remember_with_lock_bypasses_inside_active_transaction(): void
+    {
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            $executed = false;
+            $res = AtomicCache::withLock()->remember('tx_lock_key', 60, function () use (&$executed) {
+                $executed = true;
+                return 'locked_tx_data';
+            });
+
+            $this->assertTrue($executed);
+            $this->assertEquals('locked_tx_data', $res);
+            $this->assertFalse(AtomicCache::has('tx_lock_key'));
+        } finally {
+            \Illuminate\Support\Facades\DB::rollBack();
+        }
+    }
+
+    public function test_transaction_bypass_can_be_disabled_via_config_or_fluent_method(): void
+    {
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            // Fluent override: withoutTransactionBypass()
+            $res1 = AtomicCache::withoutTransactionBypass()->remember('tx_bypass_override', 60, fn() => 'forced_cached');
+            $this->assertEquals('forced_cached', $res1);
+            $this->assertTrue(AtomicCache::has('tx_bypass_override'));
+
+            AtomicCache::forget('tx_bypass_override');
+
+            // Config override: bypass_during_transactions = false
+            config(['atomic-cache.bypass_during_transactions' => false]);
+
+            $res2 = AtomicCache::remember('tx_bypass_config', 60, fn() => 'config_forced_cached');
+            $this->assertEquals('config_forced_cached', $res2);
+            $this->assertTrue(AtomicCache::has('tx_bypass_config'));
+
+            AtomicCache::forget('tx_bypass_config');
+        } finally {
+            \Illuminate\Support\Facades\DB::rollBack();
+            config(['atomic-cache.bypass_during_transactions' => true]);
+        }
+    }
+
+    public function test_multi_connection_transaction_detection(): void
+    {
+        config(['database.connections.tenant' => [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+        ]]);
+
+        $this->assertFalse(AtomicCache::isInsideActiveTransaction());
+
+        \Illuminate\Support\Facades\DB::connection('tenant')->beginTransaction();
+        try {
+            $this->assertTrue(AtomicCache::isInsideActiveTransaction());
+            $val = AtomicCache::remember('tenant_tx_test', 60, fn() => 'tenant_val');
+            $this->assertEquals('tenant_val', $val);
+            $this->assertFalse(AtomicCache::has('tenant_tx_test'));
+        } finally {
+            \Illuminate\Support\Facades\DB::connection('tenant')->rollBack();
+        }
+
+        $this->assertFalse(AtomicCache::isInsideActiveTransaction());
+    }
+
+    public function test_invalidating_clears_specified_model_collection(): void
+    {
+        AtomicCache::tags(['test_orders'])->put('orders_list', 'cached_orders', 3600);
+        $this->assertEquals('cached_orders', AtomicCache::tags(['test_orders'])->get('orders_list'));
+
+        $executed = false;
+        $result = AtomicCache::invalidating(\KaziOmar\AtomicCache\Tests\TestOrderModel::class, function () use (&$executed) {
+            $executed = true;
+            return 'processed_batch';
+        });
+
+        $this->assertTrue($executed);
+        $this->assertEquals('processed_batch', $result);
+        $this->assertNull(AtomicCache::tags(['test_orders'])->get('orders_list'));
+    }
+
+    public function test_invalidating_defers_clearing_to_after_commit_inside_transaction(): void
+    {
+        AtomicCache::tags(['test_orders'])->put('tx_orders_list', 'cached_tx_orders', 3600);
+        $this->assertEquals('cached_tx_orders', AtomicCache::tags(['test_orders'])->get('tx_orders_list'));
+
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            AtomicCache::invalidating(\KaziOmar\AtomicCache\Tests\TestOrderModel::class, function () {
+                return 'tx_done';
+            });
+
+            // Inside transaction before commit: still cached because afterCommit hasn\'t fired
+            $this->assertEquals('cached_tx_orders', AtomicCache::tags(['test_orders'])->get('tx_orders_list'));
+
+            \Illuminate\Support\Facades\DB::commit();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+            throw $e;
+        }
+
+        // After commit: afterCommit callback executed and cleared the tag
+        $this->assertNull(AtomicCache::tags(['test_orders'])->get('tx_orders_list'));
+    }
+
+    public function test_invalidating_does_not_clear_when_transaction_is_rolled_back(): void
+    {
+        AtomicCache::tags(['test_orders'])->put('rollback_orders_list', 'cached_rollback_orders', 3600);
+        $this->assertEquals('cached_rollback_orders', AtomicCache::tags(['test_orders'])->get('rollback_orders_list'));
+
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            AtomicCache::invalidating(\KaziOmar\AtomicCache\Tests\TestOrderModel::class, function () {
+                return 'will_rollback';
+            });
+
+            \Illuminate\Support\Facades\DB::rollBack();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+        }
+
+        // After rollback: afterCommit was never fired, so cache remains protected
+        $this->assertEquals('cached_rollback_orders', AtomicCache::tags(['test_orders'])->get('rollback_orders_list'));
+    }
+
+    public function test_invalidating_with_multiple_mixed_targets(): void
+    {
+        AtomicCache::tags(['custom_tag_a'])->put('key_a', 'val_a', 3600);
+        AtomicCache::tags(['custom_tag_b'])->put('key_b', 'val_b', 3600);
+
+        $this->assertEquals('val_a', AtomicCache::tags(['custom_tag_a'])->get('key_a'));
+        $this->assertEquals('val_b', AtomicCache::tags(['custom_tag_b'])->get('key_b'));
+
+        AtomicCache::invalidating(['custom_tag_a', 'custom_tag_b'], function () {
+            // Bulk work
+        });
+
+        $this->assertNull(AtomicCache::tags(['custom_tag_a'])->get('key_a'));
+        $this->assertNull(AtomicCache::tags(['custom_tag_b'])->get('key_b'));
+    }
+
+    public function test_invalidating_does_not_clear_if_callback_throws(): void
+    {
+        AtomicCache::tags(['test_orders'])->put('safe_key', 'safe_val', 3600);
+
+        try {
+            AtomicCache::invalidating(\KaziOmar\AtomicCache\Tests\TestOrderModel::class, function () {
+                throw new \RuntimeException('Something broke!');
+            });
+        } catch (\RuntimeException $e) {
+            $this->assertEquals('Something broke!', $e->getMessage());
+        }
+
+        // Cache must still exist because operation failed
+        $this->assertEquals('safe_val', AtomicCache::tags(['test_orders'])->get('safe_key'));
+    }
+
+    public function test_invalidating_with_model_instance(): void
+    {
+        $order = new \KaziOmar\AtomicCache\Tests\TestOrderModel();
+        $order->id = 77;
+        $order->store_id = 1;
+
+        AtomicCache::tags(['test_orders:77'])->put('item_77', 'val_77', 3600);
+        $this->assertEquals('val_77', AtomicCache::tags(['test_orders:77'])->get('item_77'));
+
+        AtomicCache::invalidating($order, function () {
+            // Update order instance
+        });
+
+        $this->assertNull(AtomicCache::tags(['test_orders:77'])->get('item_77'));
+    }
 }

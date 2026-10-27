@@ -14,6 +14,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Bypass Cache During Active Database Transactions
+    |--------------------------------------------------------------------------
+    |
+    | When true, AtomicCache::remember() will bypass reading and writing to
+    | cache if the current process is inside an active, uncommitted database
+    | transaction (DB::transactionLevel() > 0). This prevents dirty reads and
+    | phantom cache entries when transactions are rolled back.
+    |
+    */
+    'bypass_during_transactions' => env('ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Strict Mode (Parent Relations Validation)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled (or when null in local development), declaring invalid
+    | parent relations (typos, missing methods, non-BelongsTo relations, or
+    | methods requiring parameters) throws an \InvalidArgumentException to
+    | catch bugs early. In production, issues are logged and skipped safely.
+    |
+    */
+    'strict_mode' => env('ATOMIC_CACHE_STRICT_MODE', null),
+
+    /*
+    |--------------------------------------------------------------------------
     | Default Cache TTL
     |--------------------------------------------------------------------------
     |

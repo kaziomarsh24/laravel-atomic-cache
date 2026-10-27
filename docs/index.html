@@ -525,6 +525,16 @@
                                 <td class="p-3">Automatically clears child tag, scoped tag (<code>stores:5:orders</code>), and parent umbrella tag (<code>stores:5</code>).</td>
                             </tr>
                             <tr>
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Active Transactions: <code>DB::transaction()</code></td>
+                                <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3"><code>AtomicCache::remember()</code> automatically bypasses cache during active transactions to prevent dirty reads and phantom cache on rollbacks.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">High-Frequency Columns: <code>$cacheIgnoreColumns</code></td>
+                                <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3">Updating counters (e.g. <code>view_count</code>) clears only the single item tag (<code>products:5</code>) and keeps table and parent collections warm.</td>
+                            </tr>
+                            <tr>
                                 <td class="p-3 font-medium text-slate-900 dark:text-white">Rolled-back Transactions: <code>DB::rollBack()</code></td>
                                 <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
                                 <td class="p-3">Invalidation callbacks are deferred to <code>afterCommit</code>. If rollback occurs, cache is untouched.</td>
@@ -979,6 +989,51 @@
 
                 <div class="my-5 p-4 rounded-r-lg border-l-4 border-slate-400 bg-slate-100/60 dark:bg-zinc-900/60 text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
                     <strong>Scope &amp; Transaction Note:</strong> <code>Product::flushCache()</code> invalidates the model's <em>table collection tag</em> (<code>products</code>). It does not invalidate individual item tags (<code>products:42</code>) or parent-scoped tags (<code>stores:5:orders</code>). Also, unlike lifecycle events that wait for commit, <code>Product::flushCache()</code> executes immediately. Inside transactions, wrap in <code>DB::afterCommit(fn() =&gt; Product::flushCache())</code>.
+                </div>
+
+                <div class="mt-8 mb-4">
+                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                        High-Frequency Column Protection (<code class="text-blue-600 dark:text-blue-400 font-mono text-sm">$cacheIgnoreColumns</code>)
+                    </h3>
+                    <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-3">
+                        When updating high-frequency analytics or counters (e.g. <code>view_count</code>, <code>last_login_at</code>), flushing the entire collection cache (<code>products</code>) creates unnecessary churn. Declaring <code>$cacheIgnoreColumns</code> ensures that collection and parent caches remain warm, while only the single item cache (<code>products:42</code>) is cleared:
+                    </p>
+                </div>
+
+                <div class="relative group my-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2 border-b border-slate-200/80 dark:border-zinc-800 text-xs font-mono text-slate-500 dark:text-zinc-400 bg-slate-100/50 dark:bg-zinc-800/40">
+                        <span>app/Models/Product.php</span>
+                        <button onclick="copyCode(this)" class="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13.5px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-keyword">class</span> <span class="token-class">Product</span> <span class="token-keyword">extends</span> <span class="token-class">Model</span>
+{
+    <span class="token-keyword">use</span> <span class="token-class">AutoClearsCache</span>;
+
+    <span class="token-keyword">protected</span> <span class="token-keyword">array</span> <span class="token-variable">$cacheParents</span> <span class="token-operator">=</span> [<span class="token-string">'store'</span>];
+
+    <span class="token-comment">// Updating view_count or meta will NOT wipe the 'products' table collection cache</span>
+    <span class="token-keyword">protected</span> <span class="token-keyword">array</span> <span class="token-variable">$cacheIgnoreColumns</span> <span class="token-operator">=</span> [<span class="token-string">'view_count'</span>, <span class="token-string">'meta'</span>];
+}</code></pre>
+                </div>
+
+                <div class="mt-8 mb-4">
+                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                        Transaction-Safe Bulk Invalidation (<code class="text-blue-600 dark:text-blue-400 font-mono text-sm">AtomicCache::invalidating</code>)
+                    </h3>
+                    <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-3">
+                        Wrap bulk operations and direct SQL executions so that cache invalidation is deferred to <code>afterCommit</code> if executed inside an active database transaction:
+                    </p>
+                </div>
+
+                <div class="relative group my-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2 border-b border-slate-200/80 dark:border-zinc-800 text-xs font-mono text-slate-500 dark:text-zinc-400 bg-slate-100/50 dark:bg-zinc-800/40">
+                        <span>Bulk Invalidation Wrapper</span>
+                        <button onclick="copyCode(this)" class="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13.5px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-class">AtomicCache</span><span class="token-operator">::</span><span class="token-function">invalidating</span>([<span class="token-class">Order</span><span class="token-operator">::</span><span class="token-keyword">class</span>, <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-keyword">class</span>], <span class="token-keyword">function</span> () {
+    <span class="token-class">DB</span><span class="token-operator">::</span><span class="token-function">table</span>(<span class="token-string">'orders'</span>)<span class="token-operator">-&gt;</span><span class="token-function">where</span>(<span class="token-string">'status'</span>, <span class="token-string">'draft'</span>)<span class="token-operator">-&gt;</span><span class="token-function">delete</span>();
+    <span class="token-class">DB</span><span class="token-operator">::</span><span class="token-function">table</span>(<span class="token-string">'products'</span>)<span class="token-operator">-&gt;</span><span class="token-function">where</span>(<span class="token-string">'stock'</span>, <span class="token-number">0</span>)<span class="token-operator">-&gt;</span><span class="token-function">update</span>([<span class="token-string">'status'</span> <span class="token-operator">=&gt;</span> <span class="token-string">'out_of_stock'</span>]);
+});</code></pre>
                 </div>
 
                 <!-- Cheat Sheet Table -->

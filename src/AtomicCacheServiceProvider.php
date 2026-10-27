@@ -108,7 +108,7 @@ class AtomicCacheServiceProvider extends ServiceProvider
             return implode(';', $parts);
         };
 
-        $macro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) use ($fingerprintEagerLoads) {
+        $macro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false, string|array|null $scope = null) use ($fingerprintEagerLoads) {
             /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
             $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
 
@@ -136,22 +136,27 @@ class AtomicCacheServiceProvider extends ServiceProvider
                 $cacheKey = "{$table}:query:{$fingerprint}";
             }
 
-            $autoTags = [$table];
-            if ($modelClass) {
-                $autoTags[] = $modelClass;
-            }
+            if (!empty($scope)) {
+                $scopeTags = is_array($scope) ? $scope : [$scope];
+                $allTags = array_merge($scopeTags, $tags);
+            } else {
+                $autoTags = [$table];
+                if ($modelClass) {
+                    $autoTags[] = $modelClass;
+                }
 
-            // Also auto-tag any joined tables for joined query invalidation
-            $joins = $isEloquent ? ($this->getQuery()->joins ?? []) : ($this->joins ?? []);
-            if (is_array($joins)) {
-                foreach ($joins as $join) {
-                    if (isset($join->table) && is_string($join->table)) {
-                        $joinTable = preg_split('/\s+as\s+|\s+/i', trim($join->table))[0];
-                        $autoTags[] = $joinTable;
+                // Also auto-tag any joined tables for joined query invalidation
+                $joins = $isEloquent ? ($this->getQuery()->joins ?? []) : ($this->joins ?? []);
+                if (is_array($joins)) {
+                    foreach ($joins as $join) {
+                        if (isset($join->table) && is_string($join->table)) {
+                            $joinTable = preg_split('/\s+as\s+|\s+/i', trim($join->table))[0];
+                            $autoTags[] = $joinTable;
+                        }
                     }
                 }
+                $allTags = array_merge($autoTags, $tags);
             }
-            $allTags = array_merge($autoTags, $tags);
 
             return \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
                 $cacheKey,
@@ -164,7 +169,7 @@ class AtomicCacheServiceProvider extends ServiceProvider
         \Illuminate\Database\Eloquent\Builder::macro('atomicCache', $macro);
         \Illuminate\Database\Query\Builder::macro('atomicCache', $macro);
 
-        $firstMacro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false) use ($fingerprintEagerLoads) {
+        $firstMacro = function (mixed $keyOrTtl = null, ?int $ttl = null, array $tags = [], bool $lock = false, string|array|null $scope = null) use ($fingerprintEagerLoads) {
             /** @var \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder $this */
             $isEloquent = $this instanceof \Illuminate\Database\Eloquent\Builder;
 
@@ -192,22 +197,27 @@ class AtomicCacheServiceProvider extends ServiceProvider
                 $cacheKey = "{$table}:query:first:{$fingerprint}";
             }
 
-            $autoTags = [$table];
-            if ($modelClass) {
-                $autoTags[] = $modelClass;
-            }
+            if (!empty($scope)) {
+                $scopeTags = is_array($scope) ? $scope : [$scope];
+                $allTags = array_merge($scopeTags, $tags);
+            } else {
+                $autoTags = [$table];
+                if ($modelClass) {
+                    $autoTags[] = $modelClass;
+                }
 
-            // Also auto-tag any joined tables for joined query invalidation
-            $joins = $isEloquent ? ($this->getQuery()->joins ?? []) : ($this->joins ?? []);
-            if (is_array($joins)) {
-                foreach ($joins as $join) {
-                    if (isset($join->table) && is_string($join->table)) {
-                        $joinTable = preg_split('/\s+as\s+|\s+/i', trim($join->table))[0];
-                        $autoTags[] = $joinTable;
+                // Also auto-tag any joined tables for joined query invalidation
+                $joins = $isEloquent ? ($this->getQuery()->joins ?? []) : ($this->joins ?? []);
+                if (is_array($joins)) {
+                    foreach ($joins as $join) {
+                        if (isset($join->table) && is_string($join->table)) {
+                            $joinTable = preg_split('/\s+as\s+|\s+/i', trim($join->table))[0];
+                            $autoTags[] = $joinTable;
+                        }
                     }
                 }
+                $allTags = array_merge($autoTags, $tags);
             }
-            $allTags = array_merge($autoTags, $tags);
 
             return \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
                 $cacheKey,

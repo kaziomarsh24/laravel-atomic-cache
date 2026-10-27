@@ -31,6 +31,7 @@ class AtomicCache
     protected bool $useLock = false;
     protected ?int $lockSeconds = null;
     protected ?int $waitSeconds = null;
+    protected ?bool $bypassDuringTransactions = null;
 
     public function __construct(?string $store = null)
     {
@@ -173,6 +174,75 @@ class AtomicCache
      * - remember($key, fn() => ..., 3600)
      * - remember($key, ttl: 3600, callback: fn() => ...)
      */
+
+    /**
+     * Disable transaction bypass explicitly for this instance.
+     */
+    public function withoutTransactionBypass(): self
+    {
+        $clone = clone $this;
+        $clone->bypassDuringTransactions = false;
+        return $clone;
+    }
+
+    /**
+     * Enable transaction bypass explicitly for this instance.
+     */
+    public function withTransactionBypass(): self
+    {
+        $clone = clone $this;
+        $clone->bypassDuringTransactions = true;
+        return $clone;
+    }
+
+    /**
+     * Determine whether cache operations should be completely bypassed.
+     */
+    public function shouldBypassCache(): bool
+    {
+        if (!config('atomic-cache.enabled', true)) {
+            return true;
+        }
+
+        $bypassOnTx = $this->bypassDuringTransactions ?? (bool) config('atomic-cache.bypass_during_transactions', true);
+        if ($bypassOnTx && $this->isInsideActiveTransaction()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if the current process is inside an active, uncommitted database transaction.
+     * Prevents dirty reads and phantom cache writes during rollbacks.
+     */
+    public function isInsideActiveTransaction(): bool
+    {
+        if (!function_exists('app') || !app()->bound('db')) {
+            return false;
+        }
+
+        try {
+            $db = app('db');
+
+            if (method_exists($db, 'transactionLevel') && $db->transactionLevel() > 0) {
+                return true;
+            }
+
+            if (method_exists($db, 'getConnections')) {
+                foreach ($db->getConnections() as $connection) {
+                    if (method_exists($connection, 'transactionLevel') && $connection->transactionLevel() > 0) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable) {
+            return false;
+        }
+
+        return false;
+    }
+
     public function remember(
         string $key,
         mixed $ttlOrCallback = null,
@@ -184,7 +254,7 @@ class AtomicCache
     ): mixed {
         [$resolvedCallback, $customTtl] = $this->normalizeRememberArgs($ttlOrCallback, $callbackOrTtl, $ttl, $callback);
 
-        if (!config('atomic-cache.enabled', true)) {
+        if ($this->shouldBypassCache()) {
             return $resolvedCallback();
         }
 
@@ -477,6 +547,107 @@ class AtomicCache
     public function flushCollection(string $resource): bool
     {
         return $this->clearCollection($resource);
+    }
+
+    /**
+     * Execute a callback and ensure specified models, collections, or tags are invalidated.
+     * If executed within an active database transaction, invalidation is safely deferred
+     * to afterCommit to prevent stale dirty reads or race conditions.
+     */
+    public function invalidating(string|array|object $targets, Closure $callback): mixed
+    {
+        $result = $callback();
+
+        $tagsToClear = $this->resolveInvalidatingTags($targets);
+
+        if (!empty($tagsToClear)) {
+            $clearFn = function () use ($tagsToClear) {
+                $this->clearTags($tagsToClear);
+            };
+
+            if ($this->isInsideActiveTransaction()) {
+                $this->registerAfterCommitCallback($clearFn);
+            } else {
+                $clearFn();
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve tags to clear from mixed targets (class names, model instances, or tag strings).
+     */
+    protected function resolveInvalidatingTags(string|array|object $targets): array
+    {
+        $items = is_array($targets) ? $targets : [$targets];
+        $tags = [];
+
+        foreach ($items as $item) {
+            if ($item instanceof \Illuminate\Database\Eloquent\Model) {
+                if (method_exists($item, 'resolveCacheTagsToClear')) {
+                    $tags = array_merge($tags, $item->resolveCacheTagsToClear(false));
+                } else {
+                    $tags[] = $item->getTable();
+                    if ($item->getKey() !== null) {
+                        $tags[] = "{$item->getTable()}:{$item->getKey()}";
+                    }
+                }
+            } elseif (is_string($item)) {
+                if (class_exists($item) && is_subclass_of($item, \Illuminate\Database\Eloquent\Model::class)) {
+                    $instance = new $item();
+                    $tags[] = $instance->getTable();
+                } else {
+                    // Plain tag string (e.g. 'orders' or 'stores:5')
+                    $tags[] = $item;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($tags)));
+    }
+
+    /**
+     * Register a callback to run after the active database transaction commits.
+     */
+    protected function registerAfterCommitCallback(Closure $callback): void
+    {
+        if (!function_exists('app') || !app()->bound('db')) {
+            $callback();
+            return;
+        }
+
+        try {
+            $db = app('db');
+
+            $registered = false;
+            if (method_exists($db, 'getConnections')) {
+                foreach ($db->getConnections() as $connection) {
+                    if (method_exists($connection, 'transactionLevel') && $connection->transactionLevel() > 0) {
+                        if (method_exists($connection, 'afterCommit')) {
+                            $connection->afterCommit($callback);
+                            $registered = true;
+                        }
+                    }
+                }
+            }
+
+            if (!$registered) {
+                if (method_exists($db, 'connection')) {
+                    $conn = $db->connection();
+                    if (method_exists($conn, 'afterCommit')) {
+                        $conn->afterCommit($callback);
+                        $registered = true;
+                    }
+                }
+            }
+
+            if (!$registered) {
+                $callback();
+            }
+        } catch (\Throwable) {
+            $callback();
+        }
     }
 
     /**

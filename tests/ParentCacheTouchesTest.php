@@ -199,6 +199,52 @@ class TestPrivateCacheParentsModel extends Model
 | Unit Test Suite for Declarative Parent Cache Invalidation
 | ------------------------------------------------------------------------- */
 
+
+class TestStrictTypoModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_strict_typo';
+    protected array $cacheParents = ['nonExistentRelation'];
+}
+
+class TestStrictParamModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_strict_param';
+    protected array $cacheParents = ['relationWithParam'];
+
+    public function relationWithParam($requiredArg): BelongsTo
+    {
+        return $this->belongsTo(TestStoreModel::class, 'store_id');
+    }
+}
+
+class TestStrictMorphModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_strict_morph';
+    protected array $cacheParents = ['morphRelation'];
+
+    public function morphRelation(): MorphTo
+    {
+        return $this->morphTo();
+    }
+}
+
+
+class TestProductWithIgnoredColumnsModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_products_ignored';
+    protected $guarded = [];
+    protected array $cacheParents = ['store'];
+    protected array $cacheIgnoreColumns = ['view_count', 'meta'];
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(TestStoreModel::class, 'store_id');
+    }
+}
 class ParentCacheTouchesTest extends TestCase
 {
     protected function setUp(): void
@@ -246,11 +292,21 @@ class ParentCacheTouchesTest extends TestCase
             $table->foreignId('store_id')->nullable();
             $table->timestamps();
         });
+
+        Schema::create('test_products_ignored', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('store_id')->nullable();
+            $table->string('title')->default('Item');
+            $table->integer('view_count')->default(0);
+            $table->string('meta')->nullable();
+            $table->timestamps();
+        });
     }
 
     protected function tearDown(): void
     {
         TestOrderModel::flushConfiguredParentRelationsCache();
+        Schema::dropIfExists('test_products_ignored');
         Schema::dropIfExists('test_faulty_models');
         Schema::dropIfExists('test_comments');
         Schema::dropIfExists('test_items');
@@ -780,5 +836,235 @@ class ParentCacheTouchesTest extends TestCase
         TestOrderModel::flushCache();
         $this->assertNull(AtomicCache::tags(['test_orders'])->get('order_list_2'));
     }
-}
 
+    /**
+     * Test 24: Strict mode throws InvalidArgumentException when a parent relation method does not exist.
+     */
+    public function test_strict_mode_throws_on_missing_relation_method(): void
+    {
+        config(['atomic-cache.strict_mode' => true]);
+        TestStrictTypoModel::flushConfiguredParentRelationsCache();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Model [" . TestStrictTypoModel::class . "] declared cache parent relation ['nonExistentRelation'], but method nonExistentRelation() does not exist on the model.");
+
+        $model = new TestStrictTypoModel();
+        $model->resolveCacheTagsToClear();
+    }
+
+    /**
+     * Test 25: Strict mode throws InvalidArgumentException when a parent relation method requires parameters.
+     */
+    public function test_strict_mode_throws_on_relation_method_with_required_parameters(): void
+    {
+        config(['atomic-cache.strict_mode' => true]);
+        TestStrictParamModel::flushConfiguredParentRelationsCache();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Model [" . TestStrictParamModel::class . "] declared cache parent relation ['relationWithParam'], but method relationWithParam() requires parameters.");
+
+        $model = new TestStrictParamModel();
+        $model->resolveCacheTagsToClear();
+    }
+
+    /**
+     * Test 26: Strict mode throws InvalidArgumentException when a parent relation is not a BelongsTo.
+     */
+    public function test_strict_mode_throws_on_non_belongs_to_relation(): void
+    {
+        config(['atomic-cache.strict_mode' => true]);
+        TestStrictMorphModel::flushConfiguredParentRelationsCache();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Model [" . TestStrictMorphModel::class . "] declared cache parent relation ['morphRelation'], but relation is not an instance of BelongsTo.");
+
+        $model = new TestStrictMorphModel();
+        $model->resolveCacheTagsToClear();
+    }
+
+    /**
+     * Test 27: When strict mode is disabled, faulty parent relations are gracefully skipped without throwing.
+     */
+    public function test_strict_mode_disabled_gracefully_skips_without_throwing(): void
+    {
+        config(['atomic-cache.strict_mode' => false]);
+        TestStrictTypoModel::flushConfiguredParentRelationsCache();
+        TestStrictParamModel::flushConfiguredParentRelationsCache();
+        TestStrictMorphModel::flushConfiguredParentRelationsCache();
+
+        $model1 = new TestStrictTypoModel();
+        $tags1 = $model1->resolveCacheTagsToClear();
+        $this->assertContains('test_strict_typo', $tags1);
+
+        $model2 = new TestStrictParamModel();
+        $tags2 = $model2->resolveCacheTagsToClear();
+        $this->assertContains('test_strict_param', $tags2);
+
+        $model3 = new TestStrictMorphModel();
+        $tags3 = $model3->resolveCacheTagsToClear();
+        $this->assertContains('test_strict_morph', $tags3);
+    }
+
+    /**
+     * Test 28: $cacheIgnoreColumns preserves collection and parent tags on update when only ignored columns change.
+     */
+    public function test_cache_ignore_columns_preserves_collection_and_parent_tags_on_update(): void
+    {
+        $store = TestStoreModel::create(['name' => 'Flagship Store']);
+        $product = TestProductWithIgnoredColumnsModel::create([
+            'store_id' => $store->id,
+            'title' => 'Original Title',
+            'view_count' => 1,
+            'meta' => 'v1',
+        ]);
+
+        // Seed caches
+        $itemTag = "test_products_ignored:{$product->id}";
+        $collectionTag = 'test_products_ignored';
+        $parentCollectionTag = "test_stores:{$store->id}:test_products_ignored";
+        $parentUmbrellaTag = "test_stores:{$store->id}";
+
+        AtomicCache::tags([$itemTag])->put('item_key', 'cached_item', 3600);
+        AtomicCache::tags([$collectionTag])->put('collection_key', 'cached_collection', 3600);
+        AtomicCache::tags([$parentCollectionTag])->put('parent_col_key', 'cached_parent_col', 3600);
+        AtomicCache::tags([$parentUmbrellaTag])->put('umbrella_key', 'cached_umbrella', 3600);
+
+        // Verify all 4 cache layers are hit
+        $this->assertEquals('cached_item', AtomicCache::tags([$itemTag])->get('item_key'));
+        $this->assertEquals('cached_collection', AtomicCache::tags([$collectionTag])->get('collection_key'));
+        $this->assertEquals('cached_parent_col', AtomicCache::tags([$parentCollectionTag])->get('parent_col_key'));
+        $this->assertEquals('cached_umbrella', AtomicCache::tags([$parentUmbrellaTag])->get('umbrella_key'));
+
+        // Update ONLY ignored columns (view_count and meta, plus auto updated_at)
+        $product->view_count = 50;
+        $product->meta = 'v2';
+        $product->save();
+
+        // 1. Single item tag IS cleared (so single item shows fresh view count)
+        $this->assertNull(AtomicCache::tags([$itemTag])->get('item_key'));
+
+        // 2. Heavy collection & parent tags are NOT cleared (protected by cacheIgnoreColumns)
+        $this->assertEquals('cached_collection', AtomicCache::tags([$collectionTag])->get('collection_key'));
+        $this->assertEquals('cached_parent_col', AtomicCache::tags([$parentCollectionTag])->get('parent_col_key'));
+        $this->assertEquals('cached_umbrella', AtomicCache::tags([$parentUmbrellaTag])->get('umbrella_key'));
+    }
+
+    /**
+     * Test 29: $cacheIgnoreColumns flushes collection and parent tags when non-ignored columns change.
+     */
+    public function test_cache_ignore_columns_flushes_collection_when_non_ignored_columns_change(): void
+    {
+        $store = TestStoreModel::create(['name' => 'Flagship Store 2']);
+        $product = TestProductWithIgnoredColumnsModel::create([
+            'store_id' => $store->id,
+            'title' => 'Original Title 2',
+            'view_count' => 1,
+        ]);
+
+        $collectionTag = 'test_products_ignored';
+        $parentCollectionTag = "test_stores:{$store->id}:test_products_ignored";
+
+        AtomicCache::tags([$collectionTag])->put('collection_key_2', 'cached_col_2', 3600);
+        AtomicCache::tags([$parentCollectionTag])->put('parent_col_key_2', 'cached_p_2', 3600);
+
+        // Update title (non-ignored column) alongside view_count
+        $product->update([
+            'title' => 'Changed Title',
+            'view_count' => 100,
+        ]);
+
+        // Both collection and parent collection MUST be invalidated
+        $this->assertNull(AtomicCache::tags([$collectionTag])->get('collection_key_2'));
+        $this->assertNull(AtomicCache::tags([$parentCollectionTag])->get('parent_col_key_2'));
+    }
+
+    /**
+     * Test 30: $cacheIgnoreColumns always clears collection tags on model create and delete.
+     */
+    public function test_cache_ignore_columns_always_clears_on_create_and_delete(): void
+    {
+        $collectionTag = 'test_products_ignored';
+
+        // 1. Create always invalidates collection
+        AtomicCache::tags([$collectionTag])->put('col_create_key', 'cached_before_create', 3600);
+        $this->assertEquals('cached_before_create', AtomicCache::tags([$collectionTag])->get('col_create_key'));
+
+        $product = TestProductWithIgnoredColumnsModel::create([
+            'title' => 'Created Item',
+            'view_count' => 0,
+        ]);
+
+        $this->assertNull(AtomicCache::tags([$collectionTag])->get('col_create_key'));
+
+        // 2. Delete always invalidates collection
+        AtomicCache::tags([$collectionTag])->put('col_delete_key', 'cached_before_delete', 3600);
+        $this->assertEquals('cached_before_delete', AtomicCache::tags([$collectionTag])->get('col_delete_key'));
+
+        $product->delete();
+
+        $this->assertNull(AtomicCache::tags([$collectionTag])->get('col_delete_key'));
+    }
+
+    /**
+     * Test 31: Query macro ->atomicCache(scope: ...) isolates cache so mutations in store 2 do not invalidate store 1.
+     */
+    public function test_query_macro_with_scope_isolates_invalidation_across_tenants(): void
+    {
+        $store1 = TestStoreModel::create(['name' => 'Store 1']);
+        $store2 = TestStoreModel::create(['name' => 'Store 2']);
+
+        $order1 = TestOrderModel::create(['store_id' => $store1->id, 'status' => 'pending']);
+        $order2 = TestOrderModel::create(['store_id' => $store2->id, 'status' => 'pending']);
+
+        $scope1 = "test_stores:{$store1->id}:test_orders";
+        $scope2 = "test_stores:{$store2->id}:test_orders";
+
+        // Query with scope:
+        $res1 = TestOrderModel::where('store_id', $store1->id)->atomicCache(scope: $scope1);
+        $res2 = TestOrderModel::where('store_id', $store2->id)->atomicCache(scope: $scope2);
+
+        $this->assertCount(1, $res1);
+        $this->assertCount(1, $res2);
+
+        // Mutate Store 2 by creating a new order in Store 2
+        TestOrderModel::create(['store_id' => $store2->id, 'status' => 'completed']);
+
+        // Verify Store 2 cache was flushed, but Store 1 cache remained completely warm!
+        // We can verify Store 1 didn't re-execute by inserting a row in Store 1 directly via DB (bypassing events)
+        \Illuminate\Support\Facades\DB::table('test_orders')->insert([
+            'store_id' => $store1->id,
+            'status' => 'stealth_order',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Calling Store 1 query MUST still return 1 order because its cache was NOT invalidated!
+        $cachedStore1 = TestOrderModel::where('store_id', $store1->id)->atomicCache(scope: $scope1);
+        $this->assertCount(1, $cachedStore1, 'Store 1 cache should remain warm after store 2 mutation');
+
+        // Calling Store 2 query MUST return 2 orders because its cache WAS invalidated!
+        $freshStore2 = TestOrderModel::where('store_id', $store2->id)->atomicCache(scope: $scope2);
+        $this->assertCount(2, $freshStore2, 'Store 2 cache should have been invalidated and reloaded');
+    }
+
+    /**
+     * Test 32: ->atomicCacheFirst(scope: ...) correctly uses scoped tags.
+     */
+    public function test_query_macro_first_with_scope(): void
+    {
+        $store = TestStoreModel::create(['name' => 'First Scope Store']);
+        $order = TestOrderModel::create(['store_id' => $store->id, 'status' => 'initial_first']);
+
+        $scope = "test_stores:{$store->id}:test_orders";
+
+        $cachedFirst = TestOrderModel::where('store_id', $store->id)->atomicCacheFirst(scope: $scope);
+        $this->assertEquals('initial_first', $cachedFirst->status);
+
+        // Update the order in store
+        $order->update(['status' => 'updated_first']);
+
+        // Cache must have been invalidated via $cacheParents
+        $reloadedFirst = TestOrderModel::where('store_id', $store->id)->atomicCacheFirst(scope: $scope);
+        $this->assertEquals('updated_first', $reloadedFirst->status);
+    }
+}

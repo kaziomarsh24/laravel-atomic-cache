@@ -37,6 +37,10 @@ trait ManagesLocks
         ?int $ttl = null,
         array $tags = []
     ): mixed {
+        if (method_exists($this, 'shouldBypassCache') && $this->shouldBypassCache()) {
+            return $callback();
+        }
+
         // Fast path: cache hit
         $sentinel = new \stdClass();
         $cached = $this->get($key, $sentinel, $tags);
