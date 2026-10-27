@@ -643,7 +643,7 @@ class ParentCacheTouchesTest extends TestCase
     }
 
     /**
-     * Test 19: Edge Case - PHP BackedEnum foreign key values resolve cleanly without error.
+     * Test 19: Edge Case - PHP BackedEnum foreign key values resolve cleanly without error on create and update.
      */
     public function test_backed_enum_foreign_key_resolves_cleanly(): void
     {
@@ -654,6 +654,14 @@ class ParentCacheTouchesTest extends TestCase
 
         $this->assertContains('test_stores:77:test_orders', $tags);
         $this->assertContains('test_stores:77', $tags);
+
+        // Test updating from one BackedEnum to another BackedEnum (Store 77 -> Store 88)
+        $order->syncOriginal(); // Now original is Outlet (77)
+        $order->store_id = TestStoreEnum::Flagship; // Now current is Flagship (88)
+
+        $updateTags = $order->resolveCacheTagsToClear();
+        $this->assertContains('test_stores:77:test_orders', $updateTags);
+        $this->assertContains('test_stores:88:test_orders', $updateTags);
     }
 
     /**

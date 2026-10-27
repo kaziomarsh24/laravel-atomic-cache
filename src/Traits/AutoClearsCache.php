@@ -156,17 +156,23 @@ trait AutoClearsCache
                 $currentParentId = $this->getAttribute($foreignKey);
                 $originalParentId = $this->getOriginal($foreignKey);
 
-                $parentIds = array_unique(array_filter([$currentParentId, $originalParentId], function ($id) {
+                // Unwrap BackedEnums and Stringable objects to scalar values before filtering & array_unique
+                // This prevents fatal errors in array_unique (which uses SORT_STRING by default)
+                $rawParentIds = array_map(function ($id) {
                     if ($id instanceof \BackedEnum) {
-                        $id = $id->value;
+                        return $id->value;
                     }
-                    return (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) && trim((string) $id) !== '';
-                }));
+                    if (is_object($id) && method_exists($id, '__toString')) {
+                        return (string) $id;
+                    }
+                    return $id;
+                }, [$currentParentId, $originalParentId]);
+
+                $parentIds = array_values(array_unique(array_filter($rawParentIds, function ($id) {
+                    return is_scalar($id) && trim((string) $id) !== '';
+                })));
 
                 foreach ($parentIds as $parentId) {
-                    if ($parentId instanceof \BackedEnum) {
-                        $parentId = $parentId->value;
-                    }
                     $parentId = trim((string) $parentId);
 
                     // 1. Scoped collection tag: "stores:5:orders"
@@ -194,14 +200,17 @@ trait AutoClearsCache
     {
         foreach (['cacheParents', 'cacheTouches', 'clearsRelations'] as $prop) {
             try {
-                // Check isset to safely handle uninitialized typed properties (e.g. protected array $cacheParents;)
-                if (isset($this->{$prop})) {
-                    $val = $this->{$prop};
-                    if (is_array($val)) {
-                        return $val;
-                    }
-                    if (is_string($val) && trim($val) !== '') {
-                        return [trim($val)];
+                // Check property_exists and reflection isInitialized to avoid triggering Eloquent magic __isset()
+                if (property_exists($this, $prop)) {
+                    $ref = new \ReflectionProperty($this, $prop);
+                    if ($ref->isInitialized($this)) {
+                        $val = $ref->getValue($this);
+                        if (is_array($val)) {
+                            return $val;
+                        }
+                        if (is_string($val) && trim($val) !== '') {
+                            return [trim($val)];
+                        }
                     }
                 }
             } catch (\Throwable) {
