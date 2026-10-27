@@ -554,7 +554,7 @@ class AtomicCache
      * If executed within an active database transaction, invalidation is safely deferred
      * to afterCommit to prevent stale dirty reads or race conditions.
      */
-    public function invalidating(string|array|object $targets, Closure $callback): mixed
+    public function invalidating(mixed $targets, Closure $callback): mixed
     {
         $result = $callback();
 
@@ -576,14 +576,20 @@ class AtomicCache
     }
 
     /**
-     * Resolve tags to clear from mixed targets (class names, model instances, or tag strings).
+     * Resolve tags to clear from mixed targets (class names, model instances, collections, or tag strings).
+     *
+     * @throws \InvalidArgumentException When an unsupported target type is encountered.
      */
-    protected function resolveInvalidatingTags(string|array|object $targets): array
+    protected function resolveInvalidatingTags(mixed $targets): array
     {
-        $items = is_array($targets) ? $targets : [$targets];
+        $items = $this->normalizeInvalidatingTargets($targets);
         $tags = [];
 
         foreach ($items as $item) {
+            if ($item === null) {
+                continue;
+            }
+
             if ($item instanceof \Illuminate\Database\Eloquent\Model) {
                 if (method_exists($item, 'resolveCacheTagsToClear')) {
                     $tags = array_merge($tags, $item->resolveCacheTagsToClear(false));
@@ -594,17 +600,49 @@ class AtomicCache
                     }
                 }
             } elseif (is_string($item)) {
-                if (class_exists($item) && is_subclass_of($item, \Illuminate\Database\Eloquent\Model::class)) {
-                    $instance = new $item();
+                $trimmed = trim($item);
+                if ($trimmed === '') {
+                    continue;
+                }
+
+                if (class_exists($trimmed) && is_subclass_of($trimmed, \Illuminate\Database\Eloquent\Model::class)) {
+                    $instance = new $trimmed();
                     $tags[] = $instance->getTable();
                 } else {
                     // Plain tag string (e.g. 'orders' or 'stores:5')
-                    $tags[] = $item;
+                    $tags[] = $trimmed;
                 }
+            } else {
+                $type = get_debug_type($item);
+                $valueHint = is_scalar($item) ? " ({$item})" : "";
+                throw new \InvalidArgumentException(
+                    "AtomicCache::invalidating() expects targets to be an Eloquent Model, Model class-string, cache tag string, or an iterable/Collection of them. Received [{$type}{$valueHint}]." .
+                    (is_numeric($item) ? " If you want to invalidate a specific model ID, pass 'table:{$item}' or the Model instance." : "")
+                );
             }
         }
 
         return array_values(array_unique(array_filter($tags)));
+    }
+
+    /**
+     * Recursively flatten iterables and collections into a flat list of individual targets.
+     */
+    protected function normalizeInvalidatingTargets(mixed $targets): array
+    {
+        if (is_iterable($targets)) {
+            $flattened = [];
+            foreach ($targets as $target) {
+                if (is_iterable($target) && !($target instanceof \Illuminate\Database\Eloquent\Model)) {
+                    $flattened = array_merge($flattened, $this->normalizeInvalidatingTargets($target));
+                } else {
+                    $flattened[] = $target;
+                }
+            }
+            return $flattened;
+        }
+
+        return [$targets];
     }
 
     /**

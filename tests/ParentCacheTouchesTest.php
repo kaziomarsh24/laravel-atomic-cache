@@ -245,6 +245,20 @@ class TestProductWithIgnoredColumnsModel extends Model
         return $this->belongsTo(TestStoreModel::class, 'store_id');
     }
 }
+
+class TestStrictInvalidTypeModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_strict_invalid_type';
+    protected array $cacheParents = [123];
+}
+
+class TestStrictClassNameModel extends Model
+{
+    use AutoClearsCache;
+    protected $table = 'test_strict_class_name';
+    protected array $cacheParents = [TestStoreModel::class];
+}
 class ParentCacheTouchesTest extends TestCase
 {
     protected function setUp(): void
@@ -1066,5 +1080,94 @@ class ParentCacheTouchesTest extends TestCase
         // Cache must have been invalidated via $cacheParents
         $reloadedFirst = TestOrderModel::where('store_id', $store->id)->atomicCacheFirst(scope: $scope);
         $this->assertEquals('updated_first', $reloadedFirst->status);
+    }
+
+    /**
+     * Test 33: $model->touch() flushes collection and parent tags even with $cacheIgnoreColumns declared.
+     */
+    public function test_model_touch_flushes_collection_and_parent_tags_even_with_cache_ignore_columns(): void
+    {
+        $store = TestStoreModel::create(['name' => 'Touch Flagship Store']);
+        \Illuminate\Support\Carbon::setTestNow(now()->subDay());
+
+        $product = TestProductWithIgnoredColumnsModel::create([
+            'store_id' => $store->id,
+            'title' => 'Touch Original Title',
+            'view_count' => 5,
+        ]);
+
+        $collectionTag = 'test_products_ignored';
+        $parentCollectionTag = "test_stores:{$store->id}:test_products_ignored";
+
+        AtomicCache::tags([$collectionTag])->put('touch_col_key', 'cached_touch_col', 3600);
+        AtomicCache::tags([$parentCollectionTag])->put('touch_parent_key', 'cached_touch_parent', 3600);
+
+        $this->assertEquals('cached_touch_col', AtomicCache::tags([$collectionTag])->get('touch_col_key'));
+        $this->assertEquals('cached_touch_parent', AtomicCache::tags([$parentCollectionTag])->get('touch_parent_key'));
+
+        // Advance time so updated_at timestamp is dirty upon touch()
+        \Illuminate\Support\Carbon::setTestNow(now()->addHour());
+
+        // Calling $product->touch() updates ONLY updated_at.
+        // It must NOT be treated as onlyIgnoredColumnsChanged!
+        $product->touch();
+
+        // Both collection and parent caches MUST be invalidated
+        $this->assertNull(AtomicCache::tags([$collectionTag])->get('touch_col_key'));
+        $this->assertNull(AtomicCache::tags([$parentCollectionTag])->get('touch_parent_key'));
+
+        \Illuminate\Support\Carbon::setTestNow();
+    }
+
+    /**
+     * Test 34: Strict mode detects invalid type in $cacheParents and throws clear InvalidArgumentException.
+     */
+    public function test_strict_mode_detects_invalid_type_in_cache_parents_with_clear_message(): void
+    {
+        config(['atomic-cache.strict_mode' => true]);
+        TestStrictInvalidTypeModel::flushConfiguredParentRelationsCache();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Model [" . TestStrictInvalidTypeModel::class . "] declared invalid cache parent relation of type [int]. Expected relation method name as string (e.g. 'store' or 'author').");
+
+        $model = new TestStrictInvalidTypeModel();
+        $model->resolveCacheTagsToClear();
+    }
+
+    /**
+     * Test 35: Strict mode provides helpful hint when a class name is passed instead of relation method name.
+     */
+    public function test_strict_mode_detects_class_name_passed_instead_of_relation_method_name(): void
+    {
+        config(['atomic-cache.strict_mode' => true]);
+        TestStrictClassNameModel::flushConfiguredParentRelationsCache();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Did you pass a class name instead of the BelongsTo relation method name?");
+
+        $model = new TestStrictClassNameModel();
+        $model->resolveCacheTagsToClear();
+    }
+
+    /**
+     * Test 36: Strict mode is active by default in local environment when config is null.
+     */
+    public function test_strict_mode_is_active_by_default_in_local_environment(): void
+    {
+        config(['atomic-cache.strict_mode' => null]);
+        $originalEnv = app()['env'];
+        app()['env'] = 'local';
+
+        try {
+            TestStrictTypoModel::flushConfiguredParentRelationsCache();
+
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessage("Model [" . TestStrictTypoModel::class . "] declared cache parent relation ['nonExistentRelation'], but method nonExistentRelation() does not exist on the model.");
+
+            $model = new TestStrictTypoModel();
+            $model->resolveCacheTagsToClear();
+        } finally {
+            app()['env'] = $originalEnv;
+        }
     }
 }

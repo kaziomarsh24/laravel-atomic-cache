@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static bool forgetItem(string $resource, int|string $id)
  * @method static bool clearCollection(string $resource)
  * @method static bool flushCollection(string $resource)
- * @method static mixed invalidating(string|array|object $targets, \Closure $callback)
+ * @method static mixed invalidating(mixed $targets, \Closure $callback)
  * @method static bool isInsideActiveTransaction()
  * @method static bool shouldBypassCache()
  * @method static \KaziOmar\AtomicCache\AtomicCache withoutTransactionBypass()

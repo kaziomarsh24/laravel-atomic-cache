@@ -1658,4 +1658,53 @@ class AtomicCacheTest extends TestCase
 
         $this->assertNull(AtomicCache::tags(['test_orders:77'])->get('item_77'));
     }
+
+    public function test_invalidating_with_collection_clears_all_collection_items(): void
+    {
+        $order1 = new \KaziOmar\AtomicCache\Tests\TestOrderModel();
+        $order1->id = 101;
+        $order1->store_id = 1;
+
+        $order2 = new \KaziOmar\AtomicCache\Tests\TestOrderModel();
+        $order2->id = 102;
+        $order2->store_id = 1;
+
+        $collection = new \Illuminate\Database\Eloquent\Collection([$order1, $order2]);
+
+        AtomicCache::tags(['test_orders:101'])->put('item_101', 'val_101', 3600);
+        AtomicCache::tags(['test_orders:102'])->put('item_102', 'val_102', 3600);
+        AtomicCache::tags(['test_orders'])->put('orders_list', 'list_val', 3600);
+
+        $this->assertEquals('val_101', AtomicCache::tags(['test_orders:101'])->get('item_101'));
+        $this->assertEquals('val_102', AtomicCache::tags(['test_orders:102'])->get('item_102'));
+        $this->assertEquals('list_val', AtomicCache::tags(['test_orders'])->get('orders_list'));
+
+        AtomicCache::invalidating($collection, function () {
+            // Bulk operation on collection
+        });
+
+        $this->assertNull(AtomicCache::tags(['test_orders:101'])->get('item_101'));
+        $this->assertNull(AtomicCache::tags(['test_orders:102'])->get('item_102'));
+        $this->assertNull(AtomicCache::tags(['test_orders'])->get('orders_list'));
+    }
+
+    public function test_invalidating_with_invalid_target_type_throws_clear_exception(): void
+    {
+        // 1. Pass integer ID instead of tag or model
+        try {
+            AtomicCache::invalidating(42, fn() => null);
+            $this->fail('Expected InvalidArgumentException for integer target');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('int (42)', $e->getMessage());
+            $this->assertStringContainsString("pass 'table:42'", $e->getMessage());
+        }
+
+        // 2. Pass arbitrary stdClass object instead of Eloquent Model
+        try {
+            AtomicCache::invalidating(new \stdClass(), fn() => null);
+            $this->fail('Expected InvalidArgumentException for stdClass target');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('stdClass', $e->getMessage());
+        }
+    }
 }

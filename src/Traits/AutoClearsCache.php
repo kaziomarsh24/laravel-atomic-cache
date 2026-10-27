@@ -167,6 +167,20 @@ trait AutoClearsCache
             return false;
         }
 
+        // At least one ignored column must actually be present in the dirty/changed attributes.
+        // If only updated_at changed (e.g. via $model->touch()), it is an explicit touch and must clear cache.
+        $hasIgnoredChange = false;
+        foreach ($changes as $col) {
+            if (in_array($col, $ignored, true)) {
+                $hasIgnoredChange = true;
+                break;
+            }
+        }
+
+        if (!$hasIgnoredChange) {
+            return false;
+        }
+
         $updatedAtCol = $this->usesTimestamps() ? $this->getUpdatedAtColumn() : null;
 
         $significantChanges = array_filter($changes, function ($col) use ($updatedAtCol, $ignored) {
@@ -317,20 +331,36 @@ trait AutoClearsCache
         $isStrict = static::isParentRelationStrictModeEnabled();
 
         foreach ($relations as $relationName) {
-            if (!is_string($relationName) || trim($relationName) === '') {
+            if (!is_string($relationName)) {
+                $type = get_debug_type($relationName);
+                if ($isStrict) {
+                    throw new \InvalidArgumentException(
+                        "Model [{$class}] declared invalid cache parent relation of type [{$type}]. Expected relation method name as string (e.g. 'store' or 'author')."
+                    );
+                }
+                \Illuminate\Support\Facades\Log::warning(
+                    "[AtomicCache] Model [{$class}] declared invalid cache parent relation of type [{$type}]. Expected string relation method name."
+                );
                 continue;
             }
 
             $relationName = trim($relationName);
+            if ($relationName === '') {
+                continue;
+            }
 
             if (!method_exists($this, $relationName)) {
+                $hint = class_exists($relationName)
+                    ? " Did you pass a class name instead of the BelongsTo relation method name?"
+                    : "";
+
                 if ($isStrict) {
                     throw new \InvalidArgumentException(
-                        "Model [{$class}] declared cache parent relation ['{$relationName}'], but method {$relationName}() does not exist on the model."
+                        "Model [{$class}] declared cache parent relation ['{$relationName}'], but method {$relationName}() does not exist on the model.{$hint}"
                     );
                 }
                 \Illuminate\Support\Facades\Log::warning(
-                    "[AtomicCache] Model [{$class}] declared cache parent relation ['{$relationName}'], but method {$relationName}() does not exist."
+                    "[AtomicCache] Model [{$class}] declared cache parent relation ['{$relationName}'], but method {$relationName}() does not exist.{$hint}"
                 );
                 continue;
             }

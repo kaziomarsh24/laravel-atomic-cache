@@ -8,12 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Active Database Transaction Guard (`bypass_during_transactions`):** Automatically detects active uncommitted database transactions across all opened database connections and bypasses cache reads and writes to eliminate dirty reads and phantom cache entries upon rollback. Includes fluent overrides `AtomicCache::withoutTransactionBypass()` and `withTransactionBypass()`.
+- **Transaction-Safe Bulk Invalidation Wrapper (`AtomicCache::invalidating()`):** Safely executes a callback and invalidates targets (Model classes, Model instances, tag strings, or Eloquent Collections/iterables). Automatically defers invalidation to `afterCommit` when executed inside active database transactions, preventing race conditions. Includes recursive iterable support and explicit type validation with helpful, descriptive exceptions.
+- **Ignored Cache Columns (`$cacheIgnoreColumns`):** Allows models to declare columns (e.g. `view_count`, `last_login_at`, analytics) that update without purging heavy table collections or parent relations. Single-item caches (`posts:12`) remain invalidated for real-time item views.
+- **Scoped Query Macros (`scope:` parameter):** Added `scope:` parameter to `->atomicCache()` and `->atomicCacheFirst()` query builder macros to isolate multi-tenant or parent-scoped query caches without clearing unrelated tenant collections.
+- **Parent Relation Strict Mode (`atomic-cache.strict_mode`):** Enforces strict validation of declared `$cacheParents` relations during local development, throwing descriptive `InvalidArgumentException`s when relation methods are misspelled, missing, require parameters, or when class names are passed instead of method names.
+- **Architecture Linter Enhancements:** Updated `atomic-cache:check` CLI command to display declared `$cacheIgnoreColumns` alongside active models.
 - **Universal OCC Version Tokens Across All Drivers:** Resolved native Redis tag OCC limitation by implementing universal atomic UUID version tokens (`__vt__{$tag}`) rotated during `clearTags()` across all cache drivers (Redis, Memcached, File, Database, Array). Minimizes stale write windows to near-zero by validating tokens and capturing pre-computation version hashes directly into storage keys to close TOCTOU race condition gaps. Also optimized version token reads using `$store->many()` batch fetching in a single round-trip.
 - **Multi-Tag CLI Invalidation (`--tags`):** Added `{--tags=}` option to `ClearAtomicCacheCommand` (`php artisan atomic-cache:clear --tags=users,orders`) to support comma-separated multi-tag purging.
 - **Model Manual Flush Helpers:** Added `$model->clearCache()` instance method (expressive alias for `clearModelCacheOnCommit()`) and `Model::flushCache()` static method in `AutoClearsCache` trait for single-line manual cache invalidation after bulk updates, mass deletes, or direct SQL queries.
 - **Class-Level In-Memory Static Cache:** Added `static::$configuredParentRelationsCache` in `AutoClearsCache` to cache resolved parent relations per model class, eliminating property inspection overhead during repeated batch saves.
 - **Private Property Declarations Supported:** Verified and tested support for models declaring `private array $cacheParents`, ensuring private parent relation definitions are safely extracted across PHP 8.2–8.5 without requiring deprecated `setAccessible()` calls.
 - **Core-First Documentation Architecture & Critical Rules:** Reorganized `README.md` to follow a Core-First architecture, detailing exact usage rules alongside comprehensive bullet points outlining what causes each feature not to work (common pitfalls, anti-patterns, and framework boundaries) across all 6 architectural layers.
+
+### Fixed
+- **Explicit Model Touch Cache Busting:** Resolved an edge case in `onlyIgnoredColumnsChanged()` where updating timestamps via `$model->touch()` was erroneously classified as an ignored column change, skipping collection and parent cache clearing. The engine now verifies that at least one declared ignored column actually changed.
+- **Collection & Iterable Target Support in `invalidating()`:** Fixed `AtomicCache::invalidating()` to recursively normalize Eloquent `Collection` instances, preventing collections from failing tag resolution.
+- **Descriptive Error Messaging on Invalid Targets:** Replaced silent failures in `invalidating()` and `$cacheParents` validation with informative `InvalidArgumentException` messages, guiding developers on expected types and proper usage.
 
 ---
 
