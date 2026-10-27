@@ -5,7 +5,7 @@ All notable changes to `laravel-atomic-cache` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.4.2] - Unreleased
+## [v1.4.2] - 2026-10-27
 
 ### Fixed
 - **Transaction-Safe Deferred Tag Resolution:** Fixed a critical bug in `clearModelCacheOnCommit()` where updating a foreign key (e.g. moving an order from Store 1 to Store 2) inside `DB::transaction(...)` failed to invalidate the old parent's cache. Cache tags are now resolved immediately at event dispatch time before `finishSave()` executes `syncOriginal()`, ensuring dirty attributes are captured properly before transaction commit.
