@@ -389,6 +389,46 @@ class SecurityAndEdgeCasesTest extends TestCase
     }
 
     /**
+     * Test 10c: Static namespace taggable store OCC discards stale write.
+     * Mimics RedisTaggedCache where TaggedCache::getNamespace() returns a static string
+     * that never changes on flush. Proves that Atomic Cache's universal UUID version token
+     * is what detects the mid-flight invalidation and discards the stale write.
+     */
+    public function test_static_namespace_taggable_store_occ_discards_stale_cache_write(): void
+    {
+        $arrayStore = new \Illuminate\Cache\ArrayStore();
+        $customRepo = new class($arrayStore) extends \Illuminate\Cache\Repository {
+            public function tags($names)
+            {
+                $tagSet = new \Illuminate\Cache\TagSet($this->store, is_array($names) ? $names : [$names]);
+                return new class($this->store, $tagSet) extends \Illuminate\Cache\TaggedCache {
+                    public function getNamespace(): string
+                    {
+                        // Fixed static namespace that NEVER changes on flush (exact RedisTaggedCache behavior)
+                        return 'tag:static_catalog:entries';
+                    }
+                };
+            }
+        };
+
+        \Illuminate\Support\Facades\Cache::extend('static_taggable', function () use ($customRepo) {
+            return $customRepo;
+        });
+
+        config(['cache.stores.static_taggable' => ['driver' => 'static_taggable']]);
+
+        $computed = AtomicCache::store('static_taggable')->tags(['catalog'])->remember('occ_static_key', 3600, function () {
+            // Invalidate 'catalog' tag mid-flight while computation is running
+            AtomicCache::store('static_taggable')->clearTags(['catalog']);
+            return 'stale_static_value';
+        });
+
+        $this->assertEquals('stale_static_value', $computed);
+        // Stale write MUST be discarded because universal UUID tag version token was rotated!
+        $this->assertNull(AtomicCache::store('static_taggable')->tags(['catalog'])->get('occ_static_key'));
+    }
+
+    /**
      * Test 11: Zero or negative TTL immediately forgets the cached key.
      */
     public function test_zero_or_negative_ttl_forgets_item_immediately(): void

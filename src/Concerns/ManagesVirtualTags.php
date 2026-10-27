@@ -45,7 +45,7 @@ trait ManagesVirtualTags
             try {
                 $this->purgeRedisTaggedKeysIfNeeded($store, $tagList);
                 $store->tags($tagList)->flush();
-                return true;
+                return $allSuccess;
             } catch (Throwable $e) {
                 Log::warning("[AtomicCache] Native tag flush failed: " . $e->getMessage());
                 return false;
@@ -66,7 +66,7 @@ trait ManagesVirtualTags
     /**
      * Resolve effective key incorporating virtual tag versions if the driver does not support native tags.
      */
-    protected function resolveKeyForStore(string $key, array $tags, Repository $store): string
+    protected function resolveKeyForStore(string $key, array $tags, Repository $store, ?array $knownVersions = null): string
     {
         $formattedKey = $this->formatKey($key);
 
@@ -75,29 +75,51 @@ trait ManagesVirtualTags
         }
 
         // For non-taggable stores (file, database), append hash of virtual tag versions (ksorted for order-independent hashing)
-        $versions = $this->getVirtualTagVersions($tags, $store);
+        $versions = $knownVersions ?? $this->getVirtualTagVersions($tags, $store);
         ksort($versions);
         return "{$formattedKey}:vt:" . md5(json_encode($versions));
     }
 
     /**
      * Retrieve current version tokens for the given virtual tags.
+     * Uses $store->many() for a single round-trip fetch when available.
      * If a tag has never been versioned, initialize with a stable version.
      */
-    protected function getVirtualTagVersions(array $tags, Repository $store): array
+    public function getVirtualTagVersions(array $tags, Repository $store): array
     {
-        $versions = [];
+        if (empty($tags)) {
+            return [];
+        }
 
+        $tagToKey = [];
+        $keysToFetch = [];
         foreach ($tags as $tag) {
-            $tagVersionKey = $this->formatVirtualTagKey($tag);
-            $version = $store->get($tagVersionKey);
+            $key = $this->formatVirtualTagKey($tag);
+            $tagToKey[$tag] = $key;
+            $keysToFetch[] = $key;
+        }
+
+        $fetched = [];
+        try {
+            $fetched = $store->many($keysToFetch);
+        } catch (Throwable) {
+            $fetched = [];
+        }
+
+        $versions = [];
+        foreach ($tags as $tag) {
+            $key = $tagToKey[$tag];
+            $version = $fetched[$key] ?? null;
 
             if ($version === null) {
-                $version = (string) Str::uuid();
-                $store->forever($tagVersionKey, $version);
+                $version = $store->get($key);
+                if ($version === null) {
+                    $version = (string) Str::uuid();
+                    $store->forever($key, $version);
+                }
             }
 
-            $versions[$tag] = $version;
+            $versions[$tag] = (string) $version;
         }
 
         ksort($versions);

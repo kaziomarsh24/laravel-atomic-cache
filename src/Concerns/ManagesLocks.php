@@ -69,11 +69,17 @@ trait ManagesLocks
                         return $recheck;
                     }
 
-                    $tagVersionBefore = $this->getTagVersionIdentifier($tags, $store);
+                    $normalizedTags = $this->normalizeTags($tags);
+                    $tagVersionsBefore = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+                    $tagVersionBefore = !empty($tagVersionsBefore) ? md5(json_encode($tagVersionsBefore)) : '';
+
                     $value = $callback();
-                    $tagVersionAfter = $this->getTagVersionIdentifier($tags, $store);
+
+                    $tagVersionsAfter = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+                    $tagVersionAfter = !empty($tagVersionsAfter) ? md5(json_encode($tagVersionsAfter)) : '';
+
                     if ($tagVersionBefore === $tagVersionAfter) {
-                        $this->put($key, $value, $ttl, $tags);
+                        $this->put($key, $value, $ttl, $tags, $tagVersionsBefore);
                     }
                     return $value;
                 } finally {
@@ -87,11 +93,17 @@ trait ManagesLocks
         }
 
         // Fallback if lock could not be acquired or driver does not support locks
-        $tagVersionBefore = $this->getTagVersionIdentifier($tags, $store);
+        $normalizedTags = $this->normalizeTags($tags);
+        $tagVersionsBefore = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+        $tagVersionBefore = !empty($tagVersionsBefore) ? md5(json_encode($tagVersionsBefore)) : '';
+
         $value = $callback();
-        $tagVersionAfter = $this->getTagVersionIdentifier($tags, $store);
+
+        $tagVersionsAfter = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+        $tagVersionAfter = !empty($tagVersionsAfter) ? md5(json_encode($tagVersionsAfter)) : '';
+
         if ($tagVersionBefore === $tagVersionAfter) {
-            $this->put($key, $value, $ttl, $tags);
+            $this->put($key, $value, $ttl, $tags, $tagVersionsBefore);
         }
         return $value;
     }

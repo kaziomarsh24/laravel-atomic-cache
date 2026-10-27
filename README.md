@@ -190,7 +190,7 @@ To ensure complete clarity on what the package handles automatically versus what
 | **Direct SQL / DB Facade:** `DB::table('products')->delete(...)` | No | Bypasses Eloquent entirely. Call `AtomicCache::clearCollection('products')` manually. |
 | **Quiet Operations:** `saveQuietly()`, `withoutEvents()` | No | Intentionally suppresses model events. Call `$product->clearCache()` manually if needed. |
 | **Pivot Table Changes:** Many-to-many `attach()`, `detach()`, `sync()` | No | Pivot mutations do not fire model events on parent models. Call `AtomicCache::clearTags(...)` manually. |
-| **Multi-Level Grandparent Propagation:** `Item -> Order -> Store` | No | Does not cascade 2+ levels deep automatically. Touch the intermediate parent or use `getRelatedCacheTags()`. |
+| **Multi-Level Grandparent Propagation:** `Item -> Order -> Store` | No | Laravel's native `$touches` property calls `rawUpdate()` which **does not** fire Eloquent model events. You must either manually invoke `$orderItem->order->touch()` in an observer/controller or declare explicit parent tags via `getRelatedCacheTags()`. |
 | **External Database Mutations:** External scripts, DB triggers, ETL imports | No | External processes outside PHP cannot trigger Laravel events. Schedule or invoke cache invalidation manually. |
 
 ---
@@ -254,7 +254,7 @@ $stats = AtomicCache::rememberWithLock('annual_sales_report', 86400, function ()
 ```
 
 #### What will break it / What causes it not to work properly:
-- **Using a cache store without lock support:** Drivers that do not implement `Illuminate\Contracts\Cache\LockProvider` (such as the `null` driver or custom third-party drivers omitting `LockProvider`) cannot create atomic locks. The engine safely detects this and bypasses locking, executing the callback directly. *(Note: Laravel's `redis`, `memcached`, `database`, and `file` drivers all support locks natively).*
+- **Using a cache store without lock support:** Drivers that do not implement `Illuminate\Contracts\Cache\LockProvider` (or the `null` driver whose `NullStore` returns a dummy `NoLock`) do not provide distributed concurrency locking. The engine safely detects unsupported lock providers and bypasses locking, executing the callback directly. *(Note: Laravel's `redis`, `memcached`, `database`, and `file` drivers all support locks natively).*
 - **Calculation exceeding `lockSeconds`:** If your computation takes 20 seconds but `lockSeconds` is set to 10 seconds, the lock will expire prematurely while the first worker is still running, allowing waiting workers to enter and recompute. Always set `lockSeconds` higher than your maximum expected computation time.
 - **`waitSeconds` too short:** If computation takes 4 seconds but `waitSeconds` is set to 1 second, waiting requests will time out waiting for the lock and fall back to executing the query themselves.
 
@@ -403,10 +403,12 @@ When `ATOMIC_CACHE_DEDUPLICATION_ENABLED=true` is enabled in `.env`, Atomic Cach
 #### How it works:
 If a heavy calculation takes 4 seconds, and during second 2 an admin updates the database (flushing the tag), writing the 4-second-old result to the cache at second 4 would overwrite the update with stale data.
 
-Atomic Cache generates a universal UUID version token per tag across all cache drivers (including Redis native tags). If a tag is cleared while a closure is executing, the token mismatch triggers an OCC discard, safely dropping the stale write instead of repopulating the cache with outdated data.
+Atomic Cache dramatically minimizes stale cache writes using Optimistic Concurrency Control (OCC). It captures universal UUID version tokens per tag before computing the value. If a tag is cleared while a closure is executing, the token mismatch triggers an OCC discard, safely dropping the stale write instead of repopulating the cache with outdated data. Furthermore, virtual store writes embed the pre-computation version hash into the storage key, ensuring that even in race conditions, stale writes fall into orphaned keys that are never read.
 
 #### What will break it / What causes it not to work properly:
-- **External non-PHP invalidation:** OCC relies on `AtomicCache::clearTags()` or `flushTags()` rotating the tag version token. If an external service or raw Redis CLI command flushes Redis tags directly bypassing PHP, Atomic Cache cannot detect the external modification.
+- **Direct `Cache::tags([...])->flush()` bypass:** OCC relies on `AtomicCache::clearTags()`, `flushTags()`, or model events rotating the tag version token. If application code or a third-party package bypasses Atomic Cache and calls Laravel's native `Cache::tags([...])->flush()` directly, the native tags are flushed but Atomic Cache's version tokens are not rotated.
+- **External non-PHP invalidation:** If an external service or raw Redis CLI command flushes Redis tags directly bypassing PHP, Atomic Cache cannot detect the external modification.
+- **Redis `allkeys-lru` eviction:** OCC version tokens are stored with `forever()`. If Redis runs out of memory under an `allkeys-lru` policy, Redis may evict version token keys. If evicted, the next access generates a fresh UUID token. This safely forces a cache miss (preventing stale data), but can temporarily elevate cache miss rates until repopulated.
 - **Write-heavy tables with broad tags:** On tables with continuous concurrent updates (e.g., streaming telemetry), OCC will repeatedly discard stale writes. For high-frequency write tables, cache targeted single-item keys instead of broad table collections.
 
 ---
@@ -520,7 +522,18 @@ Product::flushCache(); // Wipes all "products" table collection caches in one li
   - *Solution:* Call `AtomicCache::clearTags([Product::class, Category::class])` explicitly after syncing.
 - **`$cacheParents` only supports `BelongsTo`:** Declaring `hasMany`, `hasOne`, `belongsToMany`, or `morphTo` in `$cacheParents` is not supported and will be silently ignored.
 - **Custom owner keys are skipped:** If a relationship uses a custom non-primary owner key (e.g. `belongsTo(Store::class, 'store_slug', 'slug')`), it is skipped because the child model holds a string slug rather than the parent's primary ID, which would create mismatched umbrella tags (`stores:nike` vs `stores:5`).
-- **Grandparent relations do not auto-cascade:** Multi-level hierarchies (e.g. `OrderItem -> Order -> Store`) do not automatically cascade from item to store. Updating an `OrderItem` invalidates `Order`, but will not clear `Store` unless `Order` is touched.
+- **Grandparent relations do not auto-cascade (`$touches` does not work):** Multi-level hierarchies (e.g. `OrderItem -> Order -> Store`) do not automatically cascade from item to store. **Crucially, Laravel's native `protected $touches = ['order']` property executes a raw database update (`rawUpdate`) and does NOT fire Eloquent model events.** Thus, declaring `$touches` will not trigger `AutoClearsCache` on the parent!
+  - *Solution 1 (Recommended - Explicit Method):* Define `getRelatedCacheTags()` on the child model:
+    ```php
+    public function getRelatedCacheTags(): array
+    {
+        return [
+            "stores:{$this->order->store_id}:orders",
+            "stores:{$this->order->store_id}",
+        ];
+    }
+    ```
+  - *Solution 2 (Manual Touch):* Call `$orderItem->order->touch()` directly on the model instance (which calls `save()` and fires Eloquent's `updated` event).
 - **Runtime property mutation is ignored:** Because configured parent relations are cached in-memory per class for performance, dynamically modifying `$model->cacheParents = [...]` on an active model instance at runtime will have no effect.
 - **Octane / Long-Running Workers:** If you dynamically manipulate `$cacheParents` during testing or worker loops, clear the in-memory cache via `Model::flushConfiguredParentRelationsCache()`.
 - **Rolled-back transactions do not clear cache:** If changes occur inside a `DB::transaction()` that throws an exception and rolls back, `afterCommit()` will not fire. The cache remains untouched.
@@ -872,6 +885,8 @@ Using `--all` flushes the **entire** configured cache store via `flush()`. If yo
 
 #### "Multi-Tenant applications sharing cache"
 In multi-tenant setups, models with similar IDs across tenants (e.g. Tenant A Order #5 and Tenant B Order #5) will resolve identical tags (`orders:5`). To prevent cross-tenant collisions, configure a dynamic tenant-specific prefix in `config('atomic-cache.prefix')` during tenant identification.
+
+*Note on Native Redis Tags:* When using Redis native tags (`TaggedCache`), Laravel's underlying tag set key (`tag:orders:entries`) is not prefixed by custom runtime prefixes unless the Redis cache store connection itself has a dedicated prefix. In single-Redis shared multi-tenant databases, invalidating `AtomicCache::clearTags(['orders'])` in Tenant A will also flush the native `orders` tag set in Tenant B (causing over-invalidation, though never data leakage). To achieve complete tag isolation across tenants in Redis, assign each tenant a dedicated Redis database or connection prefix.
 
 ---
 

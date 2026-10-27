@@ -202,14 +202,18 @@ class AtomicCache
         }
 
         $store = $this->getRawStore();
-        $tagVersionBefore = $this->getTagVersionIdentifier($tags, $store);
+        $normalizedTags = $this->normalizeTags($tags);
+        $tagVersionsBefore = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+        $tagVersionBefore = !empty($tagVersionsBefore) ? md5(json_encode($tagVersionsBefore)) : '';
 
         $value = $resolvedCallback();
 
         // Discard stale writes if tags were invalidated while callback was running
-        $tagVersionAfter = $this->getTagVersionIdentifier($tags, $store);
+        $tagVersionsAfter = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+        $tagVersionAfter = !empty($tagVersionsAfter) ? md5(json_encode($tagVersionsAfter)) : '';
+
         if ($tagVersionBefore === $tagVersionAfter) {
-            $this->put($key, $value, $customTtl, $tags);
+            $this->put($key, $value, $customTtl, $tags, $tagVersionsBefore);
         }
 
         return $value;
@@ -282,7 +286,7 @@ class AtomicCache
     /**
      * Store an item in the cache with automatic compression, chunking, and write deduplication.
      */
-    public function put(string $key, mixed $value, mixed $ttl = null, array $tags = []): bool
+    public function put(string $key, mixed $value, mixed $ttl = null, array $tags = [], ?array $knownTagVersions = null): bool
     {
         if (!config('atomic-cache.enabled', true)) {
             return false;
@@ -296,7 +300,7 @@ class AtomicCache
             $ttlSeconds = $this->calculateTtl($parsedTtl);
             $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
             $store = $this->getRawStore();
-            $effectiveKey = $this->resolveKeyForStore($key, $tags, $store);
+            $effectiveKey = $this->resolveKeyForStore($key, $tags, $store, $knownTagVersions);
             $repository = $this->getRepository($tags);
 
             // 1. Write Deduplication (Cache DNA)

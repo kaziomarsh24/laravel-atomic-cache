@@ -190,6 +190,11 @@
                             </a>
                         </li>
                         <li>
+                            <a href="#guarantees" data-nav="guarantees" class="sidebar-item block px-2.5 py-1.5 rounded-md font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                                Guarantees vs Non-Guarantees
+                            </a>
+                        </li>
+                        <li>
                             <a href="#quickstart" data-nav="quickstart" class="sidebar-item block px-2.5 py-1.5 rounded-md font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white transition-colors">
                                 10-Second Quickstart
                             </a>
@@ -477,6 +482,90 @@
                             <code>AutoClearsCache</code> automatically invalidates the entire table tag (e.g. <code>products</code>). For read-heavy tables (catalogs, settings, profiles), this maintains high cache hit rates without frequent invalidation. However, for write-heavy tables (e.g. live impression counters, audit logs), every insert clears the table tag. In write-heavy scenarios, use item-specific keys (e.g. <code>AtomicCache::remember("item:{$id}", ...)</code>) without broad table tags.
                         </p>
                     </div>
+                </div>
+            </section>
+
+            <!-- Section: Guarantees vs Non-Guarantees -->
+            <section id="guarantees" class="content-section scroll-mt-24 mt-14 pt-8 border-t border-slate-200/70 dark:border-zinc-800">
+                <h2 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">
+                    Guarantees vs Non-Guarantees
+                </h2>
+                <p class="text-[15px] text-slate-600 dark:text-zinc-400 mb-6">
+                    To ensure complete architectural clarity on what AtomicCache handles automatically versus what requires developer attention:
+                </p>
+
+                <div class="overflow-x-auto my-4 border border-slate-200 dark:border-zinc-800 rounded-lg">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 dark:bg-zinc-800/60 border-b border-slate-200 dark:border-zinc-800 text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                            <tr>
+                                <th class="p-3">Scenario / Operation</th>
+                                <th class="p-3">Automated by Package?</th>
+                                <th class="p-3">Behavior &amp; Action Required</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-zinc-800/60 text-slate-600 dark:text-zinc-300 text-xs sm:text-sm">
+                            <tr>
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Eloquent Model Instance Save: <code>$product-&gt;save()</code>, <code>update()</code></td>
+                                <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3">Automatically flushes item tag (<code>products:42</code>), collection tag (<code>products</code>), and parent relations strictly on <code>DB::afterCommit</code>.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Model Deletes &amp; Restores: <code>$product-&gt;delete()</code>, <code>restore()</code></td>
+                                <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3">Automatically flushes related tags on <code>DB::afterCommit</code>.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Model Counters: <code>$product-&gt;increment()</code>, <code>decrement()</code></td>
+                                <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3">Fires <code>updated</code> model event; automatically clears cache on commit.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Single-Level BelongsTo Parents: <code>$cacheParents = ['store']</code></td>
+                                <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3">Automatically clears child tag, scoped tag (<code>stores:5:orders</code>), and parent umbrella tag (<code>stores:5</code>).</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Rolled-back Transactions: <code>DB::rollBack()</code></td>
+                                <td class="p-3 text-emerald-600 dark:text-emerald-400 font-semibold">Yes</td>
+                                <td class="p-3">Invalidation callbacks are deferred to <code>afterCommit</code>. If rollback occurs, cache is untouched.</td>
+                            </tr>
+                            <tr class="bg-amber-50/30 dark:bg-amber-950/10">
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Query Builder Mass Updates: <code>Product::where()-&gt;update()</code></td>
+                                <td class="p-3 text-amber-600 dark:text-amber-400 font-semibold">No</td>
+                                <td class="p-3">Eloquent events do not fire. You must manually call <code>Product::flushCache();</code> or <code>AtomicCache::clearCollection('products')</code>.</td>
+                            </tr>
+                            <tr class="bg-amber-50/30 dark:bg-amber-950/10">
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Query Builder Mass Deletes: <code>Product::where()-&gt;delete()</code></td>
+                                <td class="p-3 text-amber-600 dark:text-amber-400 font-semibold">No</td>
+                                <td class="p-3">Eloquent events do not fire. Call <code>Product::flushCache();</code> manually.</td>
+                            </tr>
+                            <tr class="bg-amber-50/30 dark:bg-amber-950/10">
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Direct SQL / DB Facade: <code>DB::table('products')-&gt;delete()</code></td>
+                                <td class="p-3 text-amber-600 dark:text-amber-400 font-semibold">No</td>
+                                <td class="p-3">Bypasses Eloquent entirely. Call <code>AtomicCache::clearCollection('products')</code> manually.</td>
+                            </tr>
+                            <tr class="bg-amber-50/30 dark:bg-amber-950/10">
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Quiet Operations: <code>saveQuietly()</code>, <code>withoutEvents()</code></td>
+                                <td class="p-3 text-amber-600 dark:text-amber-400 font-semibold">No</td>
+                                <td class="p-3">Intentionally suppresses model events. Call <code>$product-&gt;clearCache()</code> manually if needed.</td>
+                            </tr>
+                            <tr class="bg-amber-50/30 dark:bg-amber-950/10">
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Pivot Table Changes: <code>attach()</code>, <code>detach()</code>, <code>sync()</code></td>
+                                <td class="p-3 text-amber-600 dark:text-amber-400 font-semibold">No</td>
+                                <td class="p-3">Pivot mutations do not fire model events on parent models. Call <code>AtomicCache::clearTags(...)</code> manually.</td>
+                            </tr>
+                            <tr class="bg-amber-50/30 dark:bg-amber-950/10">
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">Multi-Level Grandparent: <code>Item -&gt; Order -&gt; Store</code></td>
+                                <td class="p-3 text-amber-600 dark:text-amber-400 font-semibold">No</td>
+                                <td class="p-3">Laravel's native <code>$touches</code> calls <code>rawUpdate()</code> which does NOT fire model events. Either manually call <code>$orderItem-&gt;order-&gt;touch()</code> or declare parent tags via <code>getRelatedCacheTags()</code>.</td>
+                            </tr>
+                            <tr class="bg-amber-50/30 dark:bg-amber-950/10">
+                                <td class="p-3 font-medium text-slate-900 dark:text-white">External Database Mutations: External scripts, ETL imports</td>
+                                <td class="p-3 text-amber-600 dark:text-amber-400 font-semibold">No</td>
+                                <td class="p-3">External processes outside PHP cannot trigger Laravel events. Schedule or invoke cache invalidation manually.</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
 
@@ -853,6 +942,45 @@
                     <strong class="text-slate-900 dark:text-white font-semibold">Dirty Foreign Key &amp; Ghost Data Protection:</strong> If an order is transferred from Store #1 to Store #2 (<code>$order-&gt;store_id = 2</code>), AtomicCache tracks original model attributes and automatically invalidates cache tags for <strong>both</strong> the former store (#1) and the new store (#2).
                 </div>
 
+                <div class="my-5 p-4 rounded-r-lg border-l-4 border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                    <strong class="text-amber-900 dark:text-amber-300 font-semibold">Important Limitation on Grandparents &amp; Laravel $touches:</strong>
+                    Multi-level hierarchies (e.g. <code>OrderItem -&gt; Order -&gt; Store</code>) do not cascade 2+ levels deep automatically. <strong>Crucially, Laravel's native <code>protected $touches = ['order'];</code> property runs a raw database update (<code>rawUpdate</code>) and does NOT fire Eloquent model events.</strong> Consequently, declaring <code>$touches</code> will not trigger parent cache invalidation!
+                    <div class="mt-2 space-y-1">
+                        <div><strong>Solution 1 (Recommended):</strong> Define explicit grandparent tags via <code>getRelatedCacheTags()</code>:</div>
+                        <pre class="p-2 text-xs font-mono bg-white dark:bg-zinc-900 rounded border border-slate-200 dark:border-zinc-800"><code>public function getRelatedCacheTags(): array {
+    return ["stores:{$this->order->store_id}:orders", "stores:{$this->order->store_id}"];
+}</code></pre>
+                        <div class="mt-1"><strong>Solution 2:</strong> Call <code>$orderItem-&gt;order-&gt;touch()</code> directly on the model instance (which calls <code>save()</code> and fires <code>updated</code>).</div>
+                    </div>
+                </div>
+
+                <div class="mt-8 mb-4">
+                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                        Model-Level Manual Flush Helpers (<code class="text-blue-600 dark:text-blue-400 font-mono text-sm">flushCache</code> &amp; <code class="text-blue-600 dark:text-blue-400 font-mono text-sm">clearCache</code>)
+                    </h3>
+                    <p class="text-[15px] text-slate-600 dark:text-zinc-300 leading-relaxed mb-3">
+                        <code>AutoClearsCache</code> provides two helper methods directly on the model for manual cache invalidation:
+                    </p>
+                </div>
+
+                <div class="relative group my-5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2 border-b border-slate-200/80 dark:border-zinc-800 text-xs font-mono text-slate-500 dark:text-zinc-400 bg-slate-100/50 dark:bg-zinc-800/40">
+                        <span>Manual Invalidation Example</span>
+                        <button onclick="copyCode(this)" class="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Copy</button>
+                    </div>
+                    <pre class="p-4 text-[13.5px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code><span class="token-comment">// 1. Instance helper: manually clear this record and its parent tags</span>
+<span class="token-variable">$product</span> <span class="token-operator">=</span> <span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">find</span>(<span class="token-number">42</span>);
+<span class="token-variable">$product</span><span class="token-operator">-&gt;</span><span class="token-function">clearCache</span>(); <span class="token-comment">// Expressive alias for clearModelCacheOnCommit()</span>
+
+<span class="token-comment">// 2. Static helper: flush all collection-level caches for this model's table</span>
+<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">where</span>(<span class="token-string">'category_id'</span>, <span class="token-number">5</span>)<span class="token-operator">-&gt;</span><span class="token-function">update</span>([<span class="token-string">'discount'</span> <span class="token-operator">=&gt;</span> <span class="token-number">10</span>]);
+<span class="token-class">Product</span><span class="token-operator">::</span><span class="token-function">flushCache</span>(); <span class="token-comment">// Wipes all "products" table collection caches in one line!</span></code></pre>
+                </div>
+
+                <div class="my-5 p-4 rounded-r-lg border-l-4 border-slate-400 bg-slate-100/60 dark:bg-zinc-900/60 text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
+                    <strong>Scope &amp; Transaction Note:</strong> <code>Product::flushCache()</code> invalidates the model's <em>table collection tag</em> (<code>products</code>). It does not invalidate individual item tags (<code>products:42</code>) or parent-scoped tags (<code>stores:5:orders</code>). Also, unlike lifecycle events that wait for commit, <code>Product::flushCache()</code> executes immediately. Inside transactions, wrap in <code>DB::afterCommit(fn() =&gt; Product::flushCache())</code>.
+                </div>
+
                 <!-- Cheat Sheet Table -->
                 <div class="my-6 overflow-hidden rounded-lg border border-slate-200 dark:border-zinc-800 text-sm">
                     <div class="bg-slate-100/70 dark:bg-zinc-800/60 px-4 py-2.5 font-semibold text-slate-900 dark:text-white border-b border-slate-200 dark:border-zinc-800">
@@ -1138,12 +1266,27 @@ php artisan atomic-cache:check --json # For CI/CD audit pipelines</code></pre>
                             3. Targeted Tag Purging: php artisan atomic-cache:clear
                         </h3>
                         <div class="relative group my-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
-                            <pre class="p-3 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code>php artisan atomic-cache:clear products        # Purges 'products' tag and query fingerprints
-php artisan atomic-cache:clear --all --force   # Force flush entire store without interactive prompt</code></pre>
+                            <pre class="p-3 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code>php artisan atomic-cache:clear products               # Purges 'products' tag and query fingerprints
+php artisan atomic-cache:clear --tags=users,orders    # Purges multiple comma-separated tags
+php artisan atomic-cache:clear --all --force          # Force flush entire store without interactive prompt</code></pre>
                         </div>
                         <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">
                             <strong>Caution:</strong> Running <code>atomic-cache:clear --all</code> flushes the entire cache store. On shared Redis instances, use with care as this will clear all cache keys.
                         </p>
+                    </div>
+
+                    <div>
+                        <h3 class="font-bold text-slate-900 dark:text-white mb-1">
+                            4. Prune Stale Tags: php artisan atomic-cache:prune-stale-tags
+                        </h3>
+                        <p class="text-slate-600 dark:text-zinc-400 mb-2">
+                            Cleans up orphaned Redis tag references and sorted set entries that are no longer referenced by active cached keys:
+                        </p>
+                        <div class="relative group my-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-[#f8fafc] dark:bg-[#111827] overflow-hidden">
+                            <pre class="p-3 text-[13px] font-mono leading-relaxed overflow-x-auto text-slate-800 dark:text-zinc-200"><code>php artisan atomic-cache:prune-stale-tags
+# Or schedule Laravel's native tag pruning in routes/console.php:
+Schedule::command('cache:prune-stale-tags')->hourly();</code></pre>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -1233,6 +1376,14 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                             <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
                                 <strong class="text-slate-900 dark:text-white">Q: What happens if Redis goes down?</strong>
                                 <br>AtomicCache catches store connection exceptions gracefully. If Redis becomes unavailable, execution falls back to calculating the original closure without crashing user requests, logging an alert to Laravel logs.
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">Q: How does multi-tenancy work with native Redis tags?</strong>
+                                <br>When using Redis native tags (<code>TaggedCache</code>), Laravel's underlying tag set key (<code>tag:orders:entries</code>) is not prefixed by runtime prefixes unless the Redis store connection has a dedicated prefix. In single-Redis shared databases, calling <code>AtomicCache::clearTags(['orders'])</code> in Tenant A flushes <code>orders</code> in Tenant B as well (over-invalidation, not data leakage). To achieve complete tag isolation across tenants in Redis, assign each tenant a dedicated Redis database or connection prefix.
+                            </div>
+                            <div class="p-3 rounded bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800">
+                                <strong class="text-slate-900 dark:text-white">Q: What happens if Redis allkeys-lru evicts OCC version tokens?</strong>
+                                <br>AtomicCache stores OCC version tokens with <code>forever()</code>. If Redis runs out of memory under an <code>allkeys-lru</code> eviction policy, Redis may evict version tokens. When evicted, the next access generates a fresh UUID token. This safely forces a cache miss (preventing stale data), though it may cause a temporary rise in cache miss rates until repopulated.
                             </div>
                         </div>
                     </div>
@@ -1541,6 +1692,7 @@ php artisan atomic-cache:clear --all --force   # Force flush entire store withou
                 <li data-toc="why-this-exists"><a href="#why-this-exists" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Why AtomicCache?</a></li>
                 <li data-toc="who-is-this-for"><a href="#who-is-this-for" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Who Is This For?</a></li>
                 <li data-toc="limitations"><a href="#limitations" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">When NOT to Cache &amp; Limitations</a></li>
+                <li data-toc="guarantees"><a href="#guarantees" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Guarantees vs Non-Guarantees</a></li>
                 <li data-toc="quickstart"><a href="#quickstart" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">10-Second Quickstart</a></li>
                 <li data-toc="installation"><a href="#installation" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Installation</a></li>
                 <li data-toc="driver-compatibility"><a href="#driver-compatibility" class="toc-link block hover:text-slate-900 dark:hover:text-white transition-colors">Driver Compatibility</a></li>

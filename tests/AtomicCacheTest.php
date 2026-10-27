@@ -1097,6 +1097,57 @@ class AtomicCacheTest extends TestCase
         }
     }
 
+    public function test_redis_store_occ_discards_stale_cache_write_when_invalidated_mid_flight(): void
+    {
+        if (!extension_loaded('redis')) {
+            $this->markTestSkipped('Redis PHP extension is not loaded.');
+        }
+
+        $host = env('REDIS_HOST', '127.0.0.1');
+        $port = (int) env('REDIS_PORT', 6379);
+
+        try {
+            $redis = new \Redis();
+            $connected = @$redis->connect($host, $port, 1.0);
+            if (!$connected) {
+                $this->markTestSkipped('Redis server is not reachable.');
+            }
+        } catch (\Throwable) {
+            $this->markTestSkipped('Cannot connect to Redis server.');
+        }
+
+        config([
+            'cache.default' => 'redis',
+            'cache.stores.redis' => [
+                'driver' => 'redis',
+                'connection' => 'cache',
+            ],
+            'database.redis.cache' => [
+                'host' => $host,
+                'port' => $port,
+                'database' => '1',
+            ],
+        ]);
+
+        \Illuminate\Support\Facades\Cache::forgetDriver('redis');
+        \Illuminate\Support\Facades\Cache::forgetDriver();
+
+        $key = 'redis_occ_test_' . uniqid();
+        $tag = 'redis_occ_tag_' . uniqid();
+
+        // 1. Initial compute with tag on Redis, but clear tag mid-flight during callback execution
+        $computed = AtomicCache::store('redis')->tags([$tag])->remember($key, 3600, function () use ($tag) {
+            // Mid-flight invalidation
+            AtomicCache::store('redis')->clearTags([$tag]);
+            return 'stale_redis_occ_value';
+        });
+
+        $this->assertEquals('stale_redis_occ_value', $computed);
+
+        // Stale write MUST be discarded by OCC because the tag version token was rotated mid-flight!
+        $this->assertNull(AtomicCache::store('redis')->tags([$tag])->get($key));
+    }
+
     public function test_has_atomic_cache_remember_collection_and_item_respect_caching_enabled_and_per_user(): void
     {
         // 1. Verify cachingEnabled = false bypasses cache in rememberCollection & rememberItem
