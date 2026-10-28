@@ -1197,16 +1197,21 @@
                             </table>
                         </div>
                     </div>
+                    <p class="text-[14px] text-slate-600 dark:text-slate-300 leading-relaxed mt-3">
+                        Uses a <code>try/finally</code> guarantee: outside a transaction, invalidation is guaranteed even if the closure throws an exception, preventing stale reads after partial database mutations. Inside an active transaction, invalidation is safely registered via <code>DB::afterCommit()</code>. If the transaction rolls back, cache is untouched.
+                    </p>
                 </div>
 
                 <!-- 2.7 Rules & Breakages -->
                 <div class="mb-10">
                     <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">2.7 Rules &amp; What Breaks Model Invalidation</h3>
                     <ul class="list-disc pl-5 space-y-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                        <li><strong>Mass queries bypass model events:</strong> <code>Product::where(...)->update()</code> does not fire events. Call <code>Product::flushCache();</code> after updates.</li>
+                        <li><strong>Mass queries bypass model events:</strong> <code>Product::where(...)->update()</code> or <code>delete()</code> does not fire Eloquent events. Call <code>Product::flushCache();</code> after updates.</li>
                         <li><strong>Quiet saves suppress events:</strong> <code>saveQuietly()</code> requires calling <code>$product->clearCache()</code> manually.</li>
-                        <li><strong>Pivot table changes:</strong> Many-to-many <code>sync()</code> requires calling <code>AtomicCache::clearTags([User::class, Role::class])</code>.</li>
-                        <li><strong>Grandparents and Laravel $touches:</strong> Laravel's native <code>protected $touches = ['order']</code> runs raw SQL and DOES NOT fire events! Either call <code>$orderItem->order->touch()</code> or define <code>getRelatedCacheTags()</code>.</li>
+                        <li><strong>Pivot table changes:</strong> Many-to-many <code>sync()</code>, <code>attach()</code>, or <code>detach()</code> requires calling <code>AtomicCache::clearTags([Product::class, Category::class])</code>.</li>
+                        <li><strong><code>$cacheParents</code> only supports BelongsTo:</strong> Declaring <code>hasMany</code> or <code>morphTo</code> throws <code>InvalidArgumentException</code> in strict mode or logs a warning in production.</li>
+                        <li><strong>Custom owner keys are skipped:</strong> Relations using custom owner keys (e.g. string slugs) are skipped to avoid mismatched umbrella tags.</li>
+                        <li><strong>Grandparents and Laravel $touches:</strong> Laravel's native <code>protected $touches = ['order']</code> runs raw SQL and DOES NOT fire events! Either call <code>$orderItem->order->touch()</code> directly or define <code>getRelatedCacheTags()</code>.</li>
                     </ul>
                 </div>
             </section>
@@ -1239,6 +1244,10 @@
                     <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">3.2 Critical Rules &amp; What Breaks Query Macros</h3>
                     <ul class="list-disc pl-5 space-y-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                         <li><strong>Do not chain <code>->paginate()</code> after <code>->atomicCache()</code>:</strong> The macro terminates the query with <code>->get()</code>. Use <code>HasAtomicCache::rememberCollection()</code> for pagination.</li>
+                        <li><strong>Mass updates will not clear query macro caches:</strong> <code>Product::where(...)->update()</code> does not clear the cache. Call <code>Product::flushCache();</code> after updates.</li>
+                        <li><strong><code>scope:</code> queries and mass updates:</strong> <code>Order::flushCache()</code> only clears base table tags. Scoped queries (<code>scope: 'stores:5:orders'</code>) must be cleared explicitly: <code>AtomicCache::invalidating(['stores:5:orders', Order::class], fn() => ...);</code>.</li>
+                        <li><strong><code>scope:</code> queries omit automatic joins:</strong> When <code>scope:</code> is passed, join-table tagging is omitted in favor of the scope. Model lifecycle invalidation requires a declared <code>$cacheParents</code> relation.</li>
+                        <li><strong>Eager loading does not auto-tag related tables:</strong> <code>Product::with('category')->atomicCache()</code> fingerprints relations, but does not auto-tag related tables. Pass related tags explicitly: <code>tags: ['categories']</code>.</li>
                         <li><strong>Raw SQL subqueries are not auto-tagged:</strong> Tables inside <code>joinRaw()</code> or subqueries must be passed explicitly in <code>tags: ['categories']</code>.</li>
                     </ul>
                 </div>
