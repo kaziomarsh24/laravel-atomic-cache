@@ -1027,7 +1027,7 @@ Atomic Cache adheres to Semantic Versioning:
 
 | Release | Change | Impacted Workloads | Recommended Action |
 | :--- | :--- | :--- | :--- |
-| **`v1.5.0` (Unreleased)** | **Transaction Guard, Scoped Query Macro, $cacheIgnoreColumns, Strict Mode, and Universal OCC** | All workloads. | OCC now operates universally via atomic UUID version tokens across all drivers. Added Transaction Guard (`bypass_during_transactions`), `$cacheIgnoreColumns` for counter updates, Strict Mode validation, `scope:` query macro parameter, and `AtomicCache::invalidating()` wrapper. |
+| **`v1.5.0` (2026-10-28)** | **Transaction Guard, Scoped Query Macro, $cacheIgnoreColumns, Strict Mode, and Universal OCC** | All workloads. | OCC now operates universally via atomic UUID version tokens across all drivers. Added Transaction Guard (`bypass_during_transactions`), `$cacheIgnoreColumns` for counter updates, Strict Mode validation, `scope:` query macro parameter, and `AtomicCache::invalidating()` wrapper. |
 | **`v1.4.3`** | **BackedEnum Foreign Keys & Magic `__isset` Bypass** | Models using PHP 8.1+ Enums as foreign keys. | Foreign keys backed by enums are cleanly unwrapped before tag generation. Fixed reflection lookups to avoid triggering Eloquent magic `__isset`. |
 | **`v1.4.2`** | **Transaction-Safe Deferred Parent Invalidation** | Models using `$cacheParents` updated inside `DB::transaction(...)`. | Tags are resolved at event dispatch time before `syncOriginal()`, capturing old & new parent keys accurately after commit. |
 | **`v1.4.0`** | **Smart Parent Invalidation & Architecture Linter** | Applications declaring parent relationships (`$cacheParents`). | Run `php artisan atomic-cache:check` to audit Eloquent relationship caching health. |

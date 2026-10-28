@@ -5,7 +5,7 @@ All notable changes to `laravel-atomic-cache` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.5.0] - Unreleased
+## [v1.5.0] - 2026-10-28
 
 ### Added
 - **Active Database Transaction Guard (`bypass_during_transactions`):** Automatically detects active uncommitted database transactions across all opened database connections and bypasses cache reads and writes to eliminate dirty reads and phantom cache entries upon rollback. Includes fluent overrides `AtomicCache::withoutTransactionBypass()` and `withTransactionBypass()`.
