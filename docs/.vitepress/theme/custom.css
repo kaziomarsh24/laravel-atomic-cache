@@ -44,16 +44,115 @@
 }
 
 .VPHomeHero .name {
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-size: clamp(2.5rem, 5vw, 3.5rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.15 !important;
+}
+
+.VPHomeHero .text {
+  font-size: clamp(1.85rem, 3.6vw, 2.75rem) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.25 !important;
+  max-width: 620px !important;
+  color: var(--vp-c-text-1) !important;
 }
 
 .VPHomeHero .tagline {
-  max-width: 680px;
-  margin: 1.5rem auto 0 auto;
-  line-height: 1.6;
-  font-size: 1.15rem;
+  max-width: 640px;
+  margin: 1.25rem 0 0 0;
+  line-height: 1.65;
+  font-size: 1.05rem;
   color: var(--vp-c-text-2);
+}
+
+/* Enhanced Modern Search Bar */
+.VPNavBarSearch {
+  display: flex;
+  align-items: center;
+}
+
+#local-search {
+  display: flex;
+  align-items: center;
+  cursor: pointer !important;
+}
+
+.DocSearch-Button {
+  cursor: pointer !important;
+}
+
+.DocSearch-Button * {
+  pointer-events: none;
+}
+
+.DocSearch-Button:active {
+  transform: scale(0.98);
+}
+
+@media (min-width: 768px) {
+  #local-search {
+    width: 250px;
+  }
+
+  .DocSearch-Button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    height: 38px !important;
+    padding: 0 10px 0 12px !important;
+    border: 1px solid var(--vp-c-divider) !important;
+    border-radius: 8px !important;
+    background: var(--vp-c-bg-alt) !important;
+    transition: all 0.2s ease !important;
+  }
+
+  .DocSearch-Button:hover {
+    border-color: var(--vp-c-brand-1) !important;
+    background: var(--vp-c-bg-soft) !important;
+    box-shadow: 0 0 0 2px var(--vp-c-brand-soft) !important;
+  }
+
+  .DocSearch-Button-Container {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .DocSearch-Search-Icon {
+    width: 15px !important;
+    height: 15px !important;
+    color: var(--vp-c-text-2) !important;
+  }
+
+  .DocSearch-Button:hover .DocSearch-Search-Icon {
+    color: var(--vp-c-brand-1) !important;
+  }
+
+  .DocSearch-Button .DocSearch-Button-Placeholder {
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    color: var(--vp-c-text-2) !important;
+  }
+
+  .DocSearch-Button:hover .DocSearch-Button-Placeholder {
+    color: var(--vp-c-text-1) !important;
+  }
+
+  .DocSearch-Button-Keys {
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  .DocSearch-Button-Key {
+    font-size: 11px !important;
+    font-family: var(--vp-font-family-mono) !important;
+    color: var(--vp-c-text-2) !important;
+    background: var(--vp-c-bg-soft) !important;
+    border-color: var(--vp-c-divider) !important;
+  }
 }
 
 /* Feature Cards */
