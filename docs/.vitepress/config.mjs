@@ -113,7 +113,7 @@ export default defineConfig({
 
     footer: {
       message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2026 <a href="https://kaziomar.vercel.app" target="_blank" rel="noopener noreferrer" style="color: var(--vp-c-brand-1); font-weight: 500; text-decoration: underline; text-underline-offset: 3px;">Kazi Omar</a>'
+      copyright: 'Copyright © 2026 <a href="https://kaziomar.vercel.app" target="_blank" rel="noopener noreferrer" style="color: var(--vp-c-brand-1); font-weight: 500; text-decoration: underline; text-underline-offset: 3px;">Kazi Omar Faruk</a>'
     }
   }
 });
