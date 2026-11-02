@@ -6,3 +6,8 @@ phpunit.xml
 .env
 .DS_Store
 /storage
+
+# Node & VitePress
+/node_modules
+docs/.vitepress/dist
+docs/.vitepress/cache

@@ -1,6 +1,7 @@
 # Laravel Atomic Cache
 
 [![Run Tests](https://github.com/kaziomarsh24/laravel-atomic-cache/actions/workflows/run-tests.yml/badge.svg)](https://github.com/kaziomarsh24/laravel-atomic-cache/actions)
+[![Documentation](https://img.shields.io/badge/docs-online-0284c7?style=flat-square&logo=gitbook&logoColor=white)](https://kaziomarsh24.github.io/laravel-atomic-cache/)
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/thekaziomar/laravel-atomic-cache.svg?style=flat-square)](https://packagist.org/packages/thekaziomar/laravel-atomic-cache)
 [![Total Downloads](https://img.shields.io/packagist/dt/thekaziomar/laravel-atomic-cache.svg?style=flat-square)](https://packagist.org/packages/thekaziomar/laravel-atomic-cache)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%20to%208.5-777BB4.svg?style=flat-square)](https://php.net)
