@@ -1,5 +1,6 @@
 name: Deploy Documentation to GitHub Pages
 
+# Trigger deployment on main branch push
 on:
   push:
     branches: [main]
