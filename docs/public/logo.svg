@@ -1,33 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
   <defs>
-    <linearGradient id="acGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#06b6d4" />
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111827" />
+      <stop offset="100%" stop-color="#0b0f17" />
+    </linearGradient>
+
+    <!-- Cyan Accent Gradients -->
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
       <stop offset="100%" stop-color="#0284c7" />
     </linearGradient>
-    <linearGradient id="orbitGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.9" />
-      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.3" />
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#0891b2" />
+    </linearGradient>
+    <linearGradient id="coreGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7dd3fc" />
+      <stop offset="100%" stop-color="#0284c7" />
     </linearGradient>
   </defs>
 
-  <!-- Outer Rounded Shield -->
-  <rect x="8" y="8" width="84" height="84" rx="22" fill="#0b0f17" stroke="#1e293b" stroke-width="2.5" />
+  <!-- Outer Rounded Squircle Base -->
+  <rect x="8" y="8" width="104" height="104" rx="28" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="2.5" />
 
-  <!-- Center Nucleus Glow -->
-  <circle cx="50" cy="50" r="10" fill="url(#acGrad)" />
-  <circle cx="50" cy="50" r="14" fill="#06b6d4" fill-opacity="0.15" />
+  <!-- Outer Hexagonal Data Perimeter -->
+  <polygon points="60,20 94,40 94,80 60,100 26,80 26,40" stroke="#0ea5e9" stroke-width="1.8" stroke-dasharray="5 3" stroke-opacity="0.4" fill="none" />
 
-  <!-- Orbital Ellipse 1 (Horizontal) -->
-  <ellipse cx="50" cy="50" rx="34" ry="14" stroke="url(#orbitGrad)" stroke-width="2.5" stroke-dasharray="4 2" />
+  <!-- Isometric Cache Vault Geometry -->
+  <!-- Top Facet (Storage Block) -->
+  <polygon points="60,28 88,44 60,60 32,44" fill="#0369a1" fill-opacity="0.25" stroke="#38bdf8" stroke-width="2.2" stroke-linejoin="round" />
 
-  <!-- Orbital Ellipse 2 (Rotated 60deg) -->
-  <ellipse cx="50" cy="50" rx="34" ry="14" stroke="url(#orbitGrad)" stroke-width="2.5" transform="rotate(60 50 50)" />
+  <!-- Left Facet (Memory Layer) -->
+  <polygon points="32,44 60,60 60,92 32,76" fill="#075985" fill-opacity="0.4" stroke="#0284c7" stroke-width="2.2" stroke-linejoin="round" />
 
-  <!-- Orbital Ellipse 3 (Rotated -60deg) -->
-  <ellipse cx="50" cy="50" rx="34" ry="14" stroke="url(#orbitGrad)" stroke-width="2.5" transform="rotate(-60 50 50)" />
+  <!-- Right Facet (Lock Shield) -->
+  <polygon points="60,60 88,44 88,76 60,92" fill="#0c4a6e" fill-opacity="0.5" stroke="#0ea5e9" stroke-width="2.2" stroke-linejoin="round" />
 
-  <!-- Orbiting Electron Particles -->
-  <circle cx="84" cy="50" r="3" fill="#38bdf8" />
-  <circle cx="33" cy="21" r="3" fill="#06b6d4" />
-  <circle cx="67" cy="79" r="3" fill="#38bdf8" />
+  <!-- Central Atomic Pulse Core -->
+  <circle cx="60" cy="60" r="11" fill="url(#coreGlow)" />
+  <circle cx="60" cy="60" r="16" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.5" stroke-dasharray="3 2" />
+
+  <!-- Corner Sync Nodes (Distributed Mesh) -->
+  <circle cx="60" cy="28" r="3.5" fill="#38bdf8" />
+  <circle cx="88" cy="44" r="3.5" fill="#06b6d4" />
+  <circle cx="88" cy="76" r="3.5" fill="#0284c7" />
+  <circle cx="60" cy="92" r="3.5" fill="#38bdf8" />
+  <circle cx="32" cy="76" r="3.5" fill="#06b6d4" />
+  <circle cx="32" cy="44" r="3.5" fill="#0284c7" />
 </svg>

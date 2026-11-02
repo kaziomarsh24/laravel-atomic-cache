@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress';
 export default defineConfig({
   base: '/laravel-atomic-cache/',
   title: 'Laravel Atomic Cache',
-  description: 'Enterprise-grade caching, stampede protection, and transaction-safe invalidation for Laravel.',
+  description: 'Stampede-proof caching and invalidation for Laravel.',
   cleanUrls: true,
   lastUpdated: true,
 
@@ -16,7 +16,7 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#0ea5e9' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'Laravel Atomic Cache' }],
-    ['meta', { property: 'og:description', content: 'Enterprise-grade caching, stampede protection, and transaction-safe invalidation for Laravel 10, 11, 12, & 13.' }]
+    ['meta', { property: 'og:description', content: 'Stampede-proof caching, virtual tagging, and transaction-safe invalidation for Laravel.' }]
   ],
 
   themeConfig: {
