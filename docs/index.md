@@ -131,17 +131,28 @@ class ProductService
 
 :::
 
-## Architectural Comparison
+<div class="comparison-section">
+
+<div class="comparison-header">
+  <h2>Architectural Comparison</h2>
+  <p>How Laravel Atomic Cache solves common production challenges versus standard caching.</p>
+</div>
+
+<div class="comparison-table-wrapper">
 
 | Feature | Standard Laravel Cache | Laravel Atomic Cache |
 | :--- | :--- | :--- |
-| **Stampede Protection** | No (All concurrent requests hit DB) | **Atomic Lock** (1 worker computes, others wait and read) |
-| **Large Payload Size** | Raw uncompressed serialization | **Auto Gzip** (>50KB cuts Redis RAM by up to 70–80%) |
-| **Mega Datasets** | Fails on 1MB Memcached or Redis freeze | **Transparent Chunking** (splits safely, preserves keys) |
-| **Redundant Writes** | Every put hits storage and network | **Write Deduplication** (skips re-compression and chunk re-splitting) |
-| **Driver Tag Support** | Crashes on File and Database stores | **Virtual Tagging** (works across all stores without Redis) |
-| **Corrupted Data** | Throws crash exception to user | **Self-Healing** (cleans key, regenerates silently) |
-| **Simultaneous Expiry** | All keys expire in the same second | **TTL Jitter** (random variance prevents herd spikes) |
-| **Model Invalidation** | Observers fire before commit | **DB::afterCommit** (prevents transaction race conditions) |
-| **Query Caching** | Manual key hashing required | **Zero-Key Macros** (auto SQL and eager load fingerprinting) |
-| **Architecture Audit** | Manual DIY logging | **Artisan Doctor CLI** (`atomic-cache:check`) |
+| **Stampede Protection** | <span style="color: #ef4444; font-weight: 700;">✕</span> None (all requests hit DB) | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Atomic Lock** (1 worker computes, others wait & read) |
+| **Large Payload Size** | <span style="color: #ef4444; font-weight: 700;">✕</span> Raw uncompressed data | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Auto Gzip** (>50KB cuts RAM by up to 70–80%) |
+| **Mega Datasets** | <span style="color: #ef4444; font-weight: 700;">✕</span> Fails on 1MB Memcached / Redis freeze | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Transparent Chunking** (splits safely, preserves keys) |
+| **Redundant Writes** | <span style="color: #ef4444; font-weight: 700;">✕</span> Every put hits storage and network | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Write Deduplication** (skips duplicate compression) |
+| **Driver Tag Support** | <span style="color: #ef4444; font-weight: 700;">✕</span> Crashes on File and Database stores | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Virtual Tagging** (works across all stores without Redis) |
+| **Corrupted Data** | <span style="color: #ef4444; font-weight: 700;">✕</span> Throws crash exception to user | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Self-Healing** (cleans key, regenerates silently) |
+| **Simultaneous Expiry** | <span style="color: #ef4444; font-weight: 700;">✕</span> All keys expire in the same second | <span style="color: #22d3ee; font-weight: 700;">✓</span> **TTL Jitter** (random variance prevents herd spikes) |
+| **Model Invalidation** | <span style="color: #ef4444; font-weight: 700;">✕</span> Observers fire before commit | <span style="color: #22d3ee; font-weight: 700;">✓</span> **DB::afterCommit** (prevents transaction race conditions) |
+| **Query Caching** | <span style="color: #ef4444; font-weight: 700;">✕</span> Manual key hashing required | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Zero-Key Macros** (auto SQL and eager load hash) |
+| **Architecture Audit** | <span style="color: #ef4444; font-weight: 700;">✕</span> Manual DIY logging | <span style="color: #22d3ee; font-weight: 700;">✓</span> **Artisan Doctor** (`atomic-cache:check`) |
+
+</div>
+
+</div>

@@ -215,3 +215,91 @@
   font-weight: 600;
   text-align: left;
 }
+
+/* Centered Comparison Table Section */
+.comparison-section {
+  margin: 4.5rem auto;
+  max-width: 960px;
+}
+
+.comparison-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.comparison-header h2 {
+  font-size: 1.85rem !important;
+  font-weight: 700 !important;
+  border-top: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  letter-spacing: -0.02em;
+}
+
+.comparison-header p {
+  color: var(--vp-c-text-2);
+  margin-top: 0.5rem;
+  font-size: 1.02rem;
+}
+
+.comparison-table-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.vp-doc .comparison-table-wrapper table {
+  display: table !important;
+  width: 100% !important;
+  max-width: 960px !important;
+  margin: 0 auto !important;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--vp-c-bg-soft);
+}
+
+.vp-doc .comparison-table-wrapper tr:last-child td:first-child {
+  border-bottom-left-radius: 12px;
+}
+
+.vp-doc .comparison-table-wrapper tr:last-child td:last-child {
+  border-bottom-right-radius: 12px;
+}
+
+.vp-doc .comparison-table-wrapper th {
+  background: var(--vp-c-bg-alt);
+  font-size: 0.95rem;
+  padding: 14px 18px;
+  font-weight: 600;
+  border-bottom: 2px solid var(--vp-c-divider);
+}
+
+.vp-doc .comparison-table-wrapper td {
+  padding: 13px 18px;
+  font-size: 0.92rem;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc .comparison-table-wrapper tr:last-child td {
+  border-bottom: none;
+}
+
+/* Highlight the Atomic Cache column */
+.vp-doc .comparison-table-wrapper th:last-child {
+  color: var(--vp-c-brand-1);
+}
+
+.vp-doc .comparison-table-wrapper td:last-child {
+  font-weight: 500;
+  color: var(--vp-c-text-1);
+  background: rgba(14, 165, 233, 0.06);
+}
+
+.dark .vp-doc .comparison-table-wrapper td:last-child {
+  background: rgba(34, 211, 238, 0.08);
+}
+
