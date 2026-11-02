@@ -146,7 +146,7 @@ Atomic Cache includes **Transparent Chunking**:
 * **Generation UUIDs (Zero Torn Reads):** All chunks are published under a unique generation UUID before the manifest pointer updates atomically, preventing concurrent readers from reading partial/torn data.
 * **Dynamic 800 KB Guard:** Dynamically calculates items per chunk so individual chunk payloads never exceed 800 KB, remaining Memcached-safe.
 * **Key preservation:** Associative string keys and sparse numeric array indexes are preserved upon reassembly.
-* **Collection restoration:** Instances of `Illuminate\Support\Collection` are seamlessly reconstituted.
+* **Collection restoration:** Instances of `Illuminate\Support\Collection` are automatically restored.
 
 ```php
 // Storing 20,000 items automatically splits into 20 safe chunks behind the scenes:
