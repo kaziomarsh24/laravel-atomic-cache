@@ -112,19 +112,25 @@ $product = Product::where('slug', $slug)->atomicCacheFirst(3600);
 ```php [Service & Repository Layer]
 namespace App\Services;
 
-use App\Models\Product;
+use App\Models\Category;
 use KaziOmar\AtomicCache\Traits\HasAtomicCache;
 
-class ProductService
+class CategoryService
 {
     use HasAtomicCache;
 
-    protected string $cacheResource = 'products';
+    protected string $cacheResource = 'categories';
 
+    // 1. Zero-key method caching with auto argument hashing:
+    public function getCategoryBySlug(string $slug)
+    {
+        return $this->cache(__FUNCTION__, func_get_args(), fn() => Category::where('slug', $slug)->firstOrFail(), ttl: 3600);
+    }
+
+    // 2. Automatically isolates page numbers and query filters:
     public function getCatalog()
     {
-        // Automatically isolates page numbers and query filters:
-        return $this->rememberCollection('catalog', fn() => Product::paginate(20));
+        return $this->rememberCollection('catalog', fn() => Category::paginate(20));
     }
 }
 ```
