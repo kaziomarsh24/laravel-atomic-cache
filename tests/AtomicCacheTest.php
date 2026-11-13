@@ -1708,4 +1708,160 @@ class AtomicCacheTest extends TestCase
             $this->assertStringContainsString('stdClass', $e->getMessage());
         }
     }
+
+    public function test_flexible_swr_fresh_and_stale_revalidation(): void
+    {
+        $counter = 0;
+        $callback = function () use (&$counter) {
+            $counter++;
+            return "computed_val_{$counter}";
+        };
+
+        // 1. Initial compute on miss
+        $val1 = AtomicCache::flexible('swr_test_key', [2, 10], $callback);
+        $this->assertEquals('computed_val_1', $val1);
+        $this->assertEquals(1, $counter);
+
+        // 2. Fresh hit within fresh TTL
+        $val2 = AtomicCache::flexible('swr_test_key', [2, 10], $callback);
+        $this->assertEquals('computed_val_1', $val2);
+        $this->assertEquals(1, $counter); // callback not called
+
+        // 3. Stale hit during grace period: artificially store a payload where fresh_until is in the past
+        AtomicCache::put('swr_test_key', [
+            '__swr_value__' => 'computed_val_1',
+            '__swr_fresh_until__' => time() - 5,
+        ], 60);
+
+        // flexible() should return stale value immediately AND trigger refresh
+        $val3 = AtomicCache::flexible('swr_test_key', [2, 10], $callback);
+        $this->assertEquals('computed_val_1', $val3); // stale value returned instantly!
+        $this->assertEquals(2, $counter); // revalidation callback ran
+
+        // 4. Subsequent read returns the newly refreshed value
+        $val4 = AtomicCache::flexible('swr_test_key', [2, 10], $callback);
+        $this->assertEquals('computed_val_2', $val4);
+    }
+
+    public function test_has_atomic_cache_separated_per_user_and_tags(): void
+    {
+        $service = new class {
+            use HasAtomicCache;
+            protected string $cacheResource = 'test_service';
+
+            public function getData(bool $perUser, array $tags)
+            {
+                return $this->cache(
+                    'getData',
+                    func_get_args(),
+                    fn() => 'user_and_tags_result',
+                    ttl: 60,
+                    perUser: $perUser,
+                    tags: $tags
+                );
+            }
+
+            public function getDataLegacy(array $tags)
+            {
+                // Passing array as 5th argument for BC
+                return $this->cache(
+                    'getDataLegacy',
+                    func_get_args(),
+                    fn() => 'legacy_tags_result',
+                    ttl: 60,
+                    perUser: $tags
+                );
+            }
+        };
+
+        // Test with separated parameters
+        $result = $service->getData(false, ['custom_tag_1', 'custom_tag_2']);
+        $this->assertEquals('user_and_tags_result', $result);
+
+        // Invalidate via custom tag
+        AtomicCache::clearTags('custom_tag_1');
+
+        // Test backward-compatibility where 5th argument is array of tags
+        $resultLegacy = $service->getDataLegacy(['legacy_tag_a']);
+        $this->assertEquals('legacy_tags_result', $resultLegacy);
+        AtomicCache::clearTags('legacy_tag_a');
+    }
+
+    public function test_atomic_cache_paginate_and_simple_paginate(): void
+    {
+        for ($i = 1; $i <= 10; $i++) {
+            TestPost::create([
+                'title' => "Pagination Post {$i}",
+            ]);
+        }
+
+        // 1. Paginate page 1
+        $page1 = TestPost::where('title', 'like', 'Pagination Post %')->atomicCachePaginate(3, page: 1);
+        $this->assertEquals(1, $page1->currentPage());
+        $this->assertEquals(3, $page1->count());
+        $this->assertEquals(10, $page1->total());
+        $this->assertEquals('Pagination Post 1', $page1->items()[0]->title);
+
+        // 2. Paginate page 2
+        $page2 = TestPost::where('title', 'like', 'Pagination Post %')->atomicCachePaginate(3, page: 2);
+        $this->assertEquals(2, $page2->currentPage());
+        $this->assertEquals(3, $page2->count());
+        $this->assertEquals(10, $page2->total());
+        $this->assertEquals('Pagination Post 4', $page2->items()[0]->title);
+
+        // 3. Simple paginate
+        $spage = TestPost::where('title', 'like', 'Pagination Post %')->atomicCacheSimplePaginate(3, page: 1);
+        $this->assertEquals(1, $spage->currentPage());
+        $this->assertEquals(3, $spage->count());
+        $this->assertTrue($spage->hasMorePages());
+
+        // 4. Invalidation clears cached paginations
+        $post = TestPost::where('title', 'Pagination Post 1')->first();
+        $post->update(['title' => 'Updated Post 1']);
+        $recheckPage1 = TestPost::where('title', 'like', 'Pagination Post %')->atomicCachePaginate(3, page: 1);
+        $this->assertEquals(9, $recheckPage1->total());
+    }
+
+    public function test_atomic_cache_count_and_exists_macros(): void
+    {
+        TestPost::query()->forceDelete();
+        $this->assertEquals(0, TestPost::atomicCacheCount());
+        $this->assertFalse(TestPost::atomicCacheExists());
+
+        TestPost::create(['title' => 'Count Post 1']);
+        TestPost::create(['title' => 'Count Post 2']);
+
+        $count = TestPost::atomicCacheCount(60);
+        $this->assertEquals(2, $count);
+
+        $exists = TestPost::where('title', 'Count Post 1')->atomicCacheExists(60);
+        $this->assertTrue($exists);
+
+        $notExists = TestPost::where('title', 'Nonexistent')->atomicCacheExists(60);
+        $this->assertFalse($notExists);
+    }
+
+    public function test_atomic_cache_macro_accepts_carbon_datetime_ttl(): void
+    {
+        TestPost::create(['title' => 'Carbon TTL Post']);
+        $carbonTtl = now()->addMinutes(15);
+        $posts = TestPost::where('title', 'Carbon TTL Post')->atomicCache($carbonTtl);
+        $this->assertNotEmpty($posts);
+    }
+
+    public function test_has_atomic_cache_works_safely_when_request_is_not_bound(): void
+    {
+        $service = new class {
+            use HasAtomicCache;
+            protected string $cacheResource = 'unbound_req_service';
+
+            public function testCliQuery()
+            {
+                return $this->cache('testCliQuery', [], fn() => 'safe_cli_result', 60);
+            }
+        };
+
+        $result = $service->testCliQuery();
+        $this->assertEquals('safe_cli_result', $result);
+    }
 }

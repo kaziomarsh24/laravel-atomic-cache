@@ -31,13 +31,23 @@ trait HasAtomicCache
     /**
      * Cache an expensive operation based on method name and arguments.
      * Automatically normalizes complex arguments (Closures, Models) and accounts for request queries (pagination/filters).
+     *
+     * @param string $method
+     * @param array $args
+     * @param Closure|null $callback
+     * @param mixed $ttl
+     * @param bool|array|null $perUser Whether to scope to current user, or an array of tags (for backward compatibility)
+     * @param array $tags Additional cache tags
+     * @param bool $lock
+     * @return mixed
      */
     public function cache(
         string $method,
         array $args = [],
         ?Closure $callback = null,
-        ?int $ttl = null,
-        bool|array|null $perUserOrTags = null,
+        mixed $ttl = null,
+        bool|array|null $perUser = null,
+        array $tags = [],
         bool $lock = false
     ): mixed {
         if ($callback === null) {
@@ -47,7 +57,15 @@ trait HasAtomicCache
             return $callback();
         }
 
-        $effectiveTtl = $ttl ?? (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
+        // Backward compatibility: if 5th parameter is passed as an array of tags
+        if (is_array($perUser)) {
+            $tags = !empty($tags) ? array_merge($perUser, $tags) : $perUser;
+            $perUser = null;
+        }
+
+        $effectiveTtl = $ttl !== null
+            ? \KaziOmar\AtomicCache\AtomicCache::parseTtlSeconds($ttl)
+            : (property_exists($this, 'cacheTTL') ? $this->cacheTTL : null);
         $resource = $this->getCacheResource();
         $safeArgs = $this->normalizeArguments($args);
 
@@ -65,13 +83,13 @@ trait HasAtomicCache
         $argsHash = !empty($safeArgs) ? ':' . md5(serialize($safeArgs)) : '';
         $cacheKey = "{$resource}:{$method}{$argsHash}";
 
-        $tags = is_array($perUserOrTags) ? $perUserOrTags : [$resource];
-        $perUser = is_bool($perUserOrTags)
-            ? $perUserOrTags
+        $resolvedTags = !empty($tags) ? array_values(array_unique(array_merge([$resource], $tags))) : [$resource];
+        $isUserScoped = is_bool($perUser)
+            ? $perUser
             : (property_exists($this, 'cachePerUser') && $this->cachePerUser === true);
 
-        $instance = AtomicCache::tags($tags);
-        if ($perUser) {
+        $instance = AtomicCache::tags($resolvedTags);
+        if ($isUserScoped) {
             $instance = $instance->forUser();
         }
 
@@ -280,7 +298,11 @@ trait HasAtomicCache
                 if (method_exists($arg, 'toArray')) {
                     return $arg->toArray();
                 }
-                return get_class($arg) . ':' . md5(serialize($arg));
+                try {
+                    return get_class($arg) . ':' . md5(serialize($arg));
+                } catch (\Throwable) {
+                    return get_class($arg) . ':' . spl_object_hash($arg);
+                }
             }
 
             return $arg;
@@ -292,7 +314,16 @@ trait HasAtomicCache
      */
     protected function shouldIncludeRequestQuery(): bool
     {
-        return request() && !empty(request()->query());
+        if (!function_exists('app') || !app()->bound('request')) {
+            return false;
+        }
+
+        try {
+            $req = request();
+            return $req !== null && !empty($req->query());
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -302,11 +333,19 @@ trait HasAtomicCache
      */
     protected function getSanitizedRequestQuery(): array
     {
-        if (!request() || empty(request()->query())) {
+        if (!function_exists('app') || !app()->bound('request')) {
             return [];
         }
 
-        $query = request()->query();
+        try {
+            $req = request();
+            if (!$req || empty($req->query())) {
+                return [];
+            }
+            $query = $req->query();
+        } catch (\Throwable) {
+            return [];
+        }
 
         // 1. If service defines an explicit allow-list, ONLY allow those query parameters!
         if (property_exists($this, 'allowedQueryParams') && is_array($this->allowedQueryParams) && !empty($this->allowedQueryParams)) {

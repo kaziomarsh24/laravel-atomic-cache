@@ -8,22 +8,27 @@ if (!function_exists('atomic_cache')) {
      *
      * Supports:
      * - atomic_cache() -> returns AtomicCache instance for fluent chaining
+     * - atomic_cache(['products', 'orders']) -> returns AtomicCache instance scoped to tags
      * - atomic_cache('key') -> retrieves cached value or null
      * - atomic_cache('key', 3600, fn() => ...) -> remembers value with TTL
      * - atomic_cache('key', fn() => ..., 3600) -> remembers value with TTL (flexible)
      * - atomic_cache('key', fn() => ...) -> remembers value with default TTL
      *
-     * @param string|null $key
+     * @param string|array|null $key
      * @param mixed $arg2
      * @param mixed $arg3
      * @return \KaziOmar\AtomicCache\AtomicCache|mixed
      */
-    function atomic_cache(?string $key = null, mixed $arg2 = null, mixed $arg3 = null): mixed
+    function atomic_cache(string|array|null $key = null, mixed $arg2 = null, mixed $arg3 = null): mixed
     {
         $instance = app('atomic-cache');
 
         if ($key === null) {
             return $instance;
+        }
+
+        if (is_array($key)) {
+            return $instance->tags($key);
         }
 
         if ($arg2 === null && $arg3 === null) {

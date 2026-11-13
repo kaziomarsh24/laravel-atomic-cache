@@ -51,7 +51,7 @@ export default defineConfig({
       { text: 'Quickstart', link: '/guide/quickstart' },
       { text: 'Architecture', link: '/guide/layer-1-core' },
       {
-        text: 'v1.5',
+        text: 'v1.6',
         items: [
           { text: 'Changelog', link: 'https://github.com/kaziomarsh24/laravel-atomic-cache/blob/main/CHANGELOG.md' },
           { text: 'Packagist Release', link: 'https://packagist.org/packages/thekaziomar/laravel-atomic-cache' },

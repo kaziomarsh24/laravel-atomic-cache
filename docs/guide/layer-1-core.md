@@ -66,7 +66,34 @@ $stats = AtomicCache::rememberWithLock('annual_sales_report', 86400, function ()
 
 ---
 
-### 1.3 Virtual Tagging Engine (Native & Non-Taggable Stores)
+### 1.3 Stale-While-Revalidate (`flexible`)
+
+When high-traffic cache entries expire, requests must synchronously wait for database computation. `AtomicCache::flexible()` implements the **Stale-While-Revalidate (SWR)** pattern:
+* **Fresh window:** Returns cached data in `< 1ms`.
+* **Grace window (Stale):** Returns existing cached data **instantly** (0ms latency spike to users) while acquiring a non-blocking atomic distributed lock to revalidate and refresh the cache in the background.
+* **Expired:** If past the grace period or initial cache miss, computes via distributed atomic locking.
+
+```php
+use KaziOmar\AtomicCache\Facades\AtomicCache;
+
+// Auto-grace: 3600s fresh TTL, grace period is automatically computed (e.g. 720s)
+$feed = AtomicCache::flexible('homepage_feed', 3600, function () {
+    return HeavyFeedService::getFeed();
+});
+
+// Explicit fresh TTL and grace period: [fresh_seconds, grace_seconds]
+$stats = AtomicCache::flexible('global_stats', [300, 1800], function () {
+    return HeavyReportingService::calculate();
+});
+
+// Tagged SWR caching:
+$products = AtomicCache::tags(['products'])
+    ->flexible('featured', [600, 3600], fn() => Product::featured());
+```
+
+---
+
+### 1.4 Virtual Tagging Engine (Native & Non-Taggable Stores)
 
 In standard Laravel, calling `Cache::tags(['products'])` on `file` or `database` cache drivers crashes with a fatal exception: `This cache store does not support tagging.`
 
@@ -93,7 +120,7 @@ AtomicCache::flushTags(['products', 'categories']);
 
 ---
 
-### 1.4 Manual Cache Invalidation Methods
+### 1.5 Manual Cache Invalidation Methods
 
 When performing operations that do not trigger automated model events (such as bulk updates or direct SQL queries), use these manual invalidation methods:
 

@@ -217,3 +217,11 @@ class ProductService
   * *Solution:* Always explicitly declare `protected string $cacheResource = 'products';` when the class name does not match the table name.
 * **Un-serializable objects in `$extraArgs`:**
   * Passing closures with un-serializable references into `$extraArgs` will prevent deterministic cache key generation. Pass scalar values (integers, strings, arrays) instead.
+
+* **Do NOT use `remember()` for paginated data:**
+  * If you call `$this->remember('active_products', 3600, fn() => Product::paginate(15))` instead of `rememberCollection()`, it will **not** inspect `request()->query()`. Page 1 results will be cached and returned for Page 2, Page 3, and all other pages. Always use `rememberCollection()`.
+* **Resource name guessing mismatches:**
+  * If your service class is named `CatalogManager`, the trait guesses the resource tag as `'catalog_managers'`. If your database table is `products`, `Product` model events will clear `'products'`, leaving `'catalog_managers'` stale.
+  * *Solution:* Always explicitly declare `protected string $cacheResource = 'products';` when the class name does not match the table name.
+* **Un-serializable objects in `$extraArgs`:**
+  * Passing closures with un-serializable references into `$extraArgs` will prevent deterministic cache key generation. Pass scalar values (integers, strings, arrays) instead.

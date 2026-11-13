@@ -36,11 +36,39 @@ $userOrders = $user->orders()->latest()->atomicCache(3600);
 
 ---
 
-### 3.2 Critical Rules & What Breaks Query Macros
+### 3.2 Paginated Queries & Aggregations
 
-* **Do NOT chain `->paginate()` after `->atomicCache()`:**
+Atomic Cache provides dedicated query macros for caching paginated result sets and database aggregations:
+
+```php
+use App\Models\Post;
+
+// 1. Full Pagination (caches LengthAwarePaginator with page & query fingerprint):
+$paginatedPosts = Post::where('status', 'published')
+    ->latest()
+    ->atomicCachePaginate(15, 3600);
+
+// With custom columns or specific page:
+$paginated = Post::atomicCachePaginate(perPage: 20, ttl: 1800);
+
+// 2. Simple Pagination (caches SimplePaginator without total count query):
+$simplePosts = Post::where('status', 'published')
+    ->atomicCacheSimplePaginate(15, 3600);
+
+// 3. Cached Count Aggregation (SQL COUNT(*) without hydrating full models into memory):
+$totalActiveUsers = User::where('active', 1)->atomicCacheCount(300);
+
+// 4. Cached Exists Check (SQL EXISTS boolean):
+$hasPendingOrders = Order::where('status', 'pending')->atomicCacheExists(60);
+```
+
+---
+
+### 3.3 Critical Rules & What Breaks Query Macros
+
+* **Chaining `->paginate()` after `->atomicCache()`:**
   * `atomicCache()` executes `->get()` immediately and returns an Eloquent/Support `Collection`. Chaining `->paginate()` afterward throws a fatal error: `Method paginate does not exist on Collection`.
-  * *Solution:* For pagination, use the Service Layer's `rememberCollection()` method (see Layer 4).
+  * *Solution:* Call `->atomicCachePaginate(15)` directly on the builder!
 * **Mass updates will not clear query macro caches:**
   * If you cache a query via `Product::where('active', 1)->atomicCache()`, running `Product::where('active', 1)->update(['price' => 20])` will not clear the cache because no Eloquent event fires.
   * *Solution:* Call `Product::flushCache();` after the update.

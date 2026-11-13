@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \KaziOmar\AtomicCache\AtomicCache forUser(int|string|null $userId = null)
  * @method static \KaziOmar\AtomicCache\AtomicCache withJitter(?float $percentage = null)
  * @method static mixed remember(string $key, mixed $ttlOrCallback, mixed $callbackOrTtl = null, array $tags = [], bool $lock = false)
+ * @method static mixed flexible(string $key, mixed $ttlAndGrace, \Closure $callback, array $tags = [])
  * @method static mixed rememberWithLock(string $key, mixed $ttlOrCallback, mixed $callbackOrTtl = null, array $tags = [], ?int $lockSeconds = null, ?int $waitSeconds = null)
  * @method static mixed rememberForUser(string $key, mixed $ttlOrCallback, mixed $callbackOrTtl = null, int|string|null $userId = null, array $tags = [])
  * @method static mixed get(string $key, mixed $default = null, array $tags = [])

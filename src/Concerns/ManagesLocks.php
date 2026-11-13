@@ -97,6 +97,12 @@ trait ManagesLocks
         }
 
         // Fallback if lock could not be acquired or driver does not support locks
+        // Re-check cache before running callback to prevent thundering herd if lock holder just finished
+        $fallbackRecheck = $this->get($key, $sentinel, $tags);
+        if ($fallbackRecheck !== $sentinel) {
+            return $fallbackRecheck;
+        }
+
         $normalizedTags = $this->normalizeTags($tags);
         $tagVersionsBefore = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
         $tagVersionBefore = !empty($tagVersionsBefore) ? md5(json_encode($tagVersionsBefore)) : '';

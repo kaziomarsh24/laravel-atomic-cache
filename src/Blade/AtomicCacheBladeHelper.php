@@ -10,9 +10,11 @@ class AtomicCacheBladeHelper
 
     /**
      * Set up the cache block. Returns true if block should be rendered (cache miss), false if cached.
+     * Accepts integer seconds, Carbon instances, or DateIntervals.
      */
-    public static function setUp(string $key, ?int $ttl = null, array $tags = []): bool
+    public static function setUp(string $key, mixed $ttl = null, array $tags = []): bool
     {
+        $effectiveTtl = \KaziOmar\AtomicCache\AtomicCache::parseTtlSeconds($ttl);
         $cached = AtomicCache::tags($tags)->get($key);
 
         if ($cached !== null) {
@@ -24,7 +26,7 @@ class AtomicCacheBladeHelper
 
         static::$stack[] = [
             'key' => $key,
-            'ttl' => $ttl,
+            'ttl' => $effectiveTtl,
             'tags' => $tags,
             'level' => ob_get_level(),
         ];

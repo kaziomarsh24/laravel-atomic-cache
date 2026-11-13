@@ -33,8 +33,9 @@ $featured = Product::where('status', 'active')->latest()->atomicCache(3600);
 - [Layer 1: The Core Caching Engine (`AtomicCache::`)](#layer-1-the-core-caching-engine-atomiccache)
   - [1.1 Basic Caching](#11-basic-caching)
   - [1.2 Stampede Protection (`rememberWithLock`)](#12-stampede-protection-rememberwithlock)
-  - [1.3 Virtual Tagging Engine (Native & Non-Taggable Stores)](#13-virtual-tagging-engine-native--non-taggable-stores)
-  - [1.4 Manual Cache Invalidation Methods](#14-manual-cache-invalidation-methods)
+  - [1.3 Stale-While-Revalidate (`flexible`)](#13-stale-while-revalidate-flexible)
+  - [1.4 Virtual Tagging Engine (Native & Non-Taggable Stores)](#14-virtual-tagging-engine-native--non-taggable-stores)
+  - [1.5 Manual Cache Invalidation Methods](#15-manual-cache-invalidation-methods)
   - [1.5 Automatic Payload Compression (Gzip)](#15-automatic-payload-compression-gzip)
   - [1.6 Transparent Chunking (Mega Datasets & Collections)](#16-transparent-chunking-mega-datasets--collections)
   - [1.7 Cache TTL Jitter (Thundering Herd Variance)](#17-cache-ttl-jitter-thundering-herd-variance)
@@ -268,7 +269,35 @@ $stats = AtomicCache::rememberWithLock('annual_sales_report', 86400, function ()
 
 ---
 
-### 1.3 Virtual Tagging Engine (Native & Non-Taggable Stores)
+### 1.3 Stale-While-Revalidate (`flexible`)
+
+#### How it works:
+When high-traffic cache entries expire, requests must synchronously wait for database computation. `AtomicCache::flexible()` implements the **Stale-While-Revalidate (SWR)** pattern:
+* **Fresh window:** Returns cached data in `< 1ms`.
+* **Grace window (Stale):** Returns existing cached data **instantly** (0ms latency spike to users) while acquiring a non-blocking atomic distributed lock to revalidate and refresh the cache in the background.
+* **Expired:** If past the grace period or initial cache miss, computes via distributed atomic locking.
+
+```php
+use KaziOmar\AtomicCache\Facades\AtomicCache;
+
+// Auto-grace: 3600s fresh TTL, grace period is automatically computed (e.g. 720s)
+$feed = AtomicCache::flexible('homepage_feed', 3600, function () {
+    return HeavyFeedService::getFeed();
+});
+
+// Explicit fresh TTL and grace period: [fresh_seconds, grace_seconds]
+$stats = AtomicCache::flexible('global_stats', [300, 1800], function () {
+    return HeavyReportingService::calculate();
+});
+
+// Tagged SWR caching:
+$products = AtomicCache::tags(['products'])
+    ->flexible('featured', [600, 3600], fn() => Product::featured());
+```
+
+---
+
+### 1.4 Virtual Tagging Engine (Native & Non-Taggable Stores)
 
 #### How it works:
 In standard Laravel, calling `Cache::tags(['products'])` on `file` or `database` cache drivers crashes with a fatal exception: `This cache store does not support tagging.`
@@ -295,7 +324,7 @@ AtomicCache::flushTags(['products', 'categories']);
 
 ---
 
-### 1.4 Manual Cache Invalidation Methods
+### 1.5 Manual Cache Invalidation Methods
 
 #### How it works:
 When performing operations that do not trigger automated model events (such as bulk updates or direct SQL queries), use these manual invalidation methods:
@@ -692,11 +721,41 @@ $userOrders = $user->orders()->latest()->atomicCache(3600);
 
 ---
 
-### 3.2 Critical Rules & What Breaks Query Macros
+### 3.2 Paginated Queries & Aggregations
 
-- **Do NOT chain `->paginate()` after `->atomicCache()`:**
+Atomic Cache provides dedicated query macros for caching paginated result sets and database aggregations:
+
+```php
+use App\Models\Post;
+use App\Models\User;
+use App\Models\Order;
+
+// 1. Full Pagination (caches LengthAwarePaginator with page & query fingerprint):
+$paginatedPosts = Post::where('status', 'published')
+    ->latest()
+    ->atomicCachePaginate(15, 3600);
+
+// With custom parameters:
+$paginated = Post::atomicCachePaginate(perPage: 20, ttl: 1800);
+
+// 2. Simple Pagination (caches SimplePaginator without total count query):
+$simplePosts = Post::where('status', 'published')
+    ->atomicCacheSimplePaginate(15, 3600);
+
+// 3. Cached Count Aggregation (SQL COUNT(*) without hydrating full models into memory):
+$totalActiveUsers = User::where('active', 1)->atomicCacheCount(300);
+
+// 4. Cached Exists Check (SQL EXISTS boolean):
+$hasPendingOrders = Order::where('status', 'pending')->atomicCacheExists(60);
+```
+
+---
+
+### 3.3 Critical Rules & What Breaks Query Macros
+
+- **Chaining `->paginate()` after `->atomicCache()`:**
   - `atomicCache()` executes `->get()` immediately and returns an Eloquent/Support `Collection`. Chaining `->paginate()` afterward will throw a fatal error: `Method paginate does not exist on Collection`.
-  - *Solution:* For pagination, use the Service Layer's `rememberCollection()` method (see Layer 4).
+  - *Solution:* Call `->atomicCachePaginate(15)` directly on the builder!
 - **Mass updates will not clear query macro caches:**
   - If you cache a query via `Product::where('active', 1)->atomicCache()`, running `Product::where('active', 1)->update(['price' => 20])` will not clear the cache because no Eloquent event fires.
   - *Solution:* Call `Product::flushCache();` after the update.
@@ -1106,8 +1165,13 @@ return [
 | `ATOMIC_CACHE_STAMPEDE_ENABLED` | `true` | Enable atomic distributed locking by default |
 | `ATOMIC_CACHE_LOCK_SECONDS` | `10` | Maximum lock hold duration during closure calculation |
 | `ATOMIC_CACHE_WAIT_SECONDS` | `5` | Maximum seconds concurrent requests will wait for computation |
+| `ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS` | `true` | Bypass cache reads/writes inside active DB transactions to prevent dirty reads |
+| `ATOMIC_CACHE_STRICT_MODE` | `null` | Strict parent relation validation (`null` enables in local development) |
 | `ATOMIC_CACHE_COMPRESSION_ENABLED`| `true` | Auto-compress payloads exceeding compression threshold |
 | `ATOMIC_CACHE_COMPRESSION_THRESHOLD`| `51200` | Minimum serialized byte size to trigger Gzip compression (50 KB) |
+| `ATOMIC_CACHE_COMPRESSION_LEVEL` | `6` | Gzip compression level (1-9) |
+| `ATOMIC_CACHE_SELF_HEALING` | `true` | Purges corrupt/truncated cache entries and recalculates on cache miss |
+| `ATOMIC_CACHE_LOG_CORRUPTED` | `true` | Logs warnings when a corrupted cache payload is detected and self-healed |
 | `ATOMIC_CACHE_CHUNKING_ENABLED` | `true` | Auto-partition large datasets into driver-safe chunk keys |
 | `ATOMIC_CACHE_CHUNKING_THRESHOLD` | `1000` | Item count threshold required to trigger transparent chunking |
 | `ATOMIC_CACHE_CHUNK_SIZE` | `1000` | Item count per partitioned chunk |

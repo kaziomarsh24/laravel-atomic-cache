@@ -114,8 +114,12 @@ trait ManagesVirtualTags
             if ($version === null) {
                 $version = $store->get($key);
                 if ($version === null) {
-                    $version = (string) Str::uuid();
-                    $store->forever($key, $version);
+                    $newUuid = (string) Str::uuid();
+                    if ($store->add($key, $newUuid, 315360000)) {
+                        $version = $newUuid;
+                    } else {
+                        $version = $store->get($key) ?? $newUuid;
+                    }
                 }
             }
 
@@ -261,7 +265,7 @@ trait ManagesVirtualTags
      */
     protected function shouldPurgeRedisTaggedKeysDirectly(): bool
     {
-        $laravelVersion = function_exists('app') ? app()->version() : null;
+        $laravelVersion = (function_exists('app') && method_exists(app(), 'version')) ? app()->version() : null;
         if ($laravelVersion !== null && version_compare($laravelVersion, '11.0.0', '>=')) {
             return false;
         }

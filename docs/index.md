@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "Atomic Cache"
   text: "Stampede-proof caching for Laravel."
-  tagline: '<span class="hero-badge">v1.5 • Laravel 10, 11, 12 & 13</span><br>Atomic distributed locks to prevent dogpiling, zero-crash virtual tags for every cache store, and transaction-safe invalidation deferred to database commits.'
+  tagline: '<span class="hero-badge">v1.6 • Laravel 10, 11, 12 & 13</span><br>Atomic distributed locks to prevent dogpiling, zero-crash virtual tags for every cache store, and transaction-safe invalidation deferred to database commits.'
   image:
     src: /logo.svg
     alt: Laravel Atomic Cache

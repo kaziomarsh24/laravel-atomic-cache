@@ -57,7 +57,11 @@ trait AutoClearsCache
         $connection = $this->getConnection();
 
         if ($connection && method_exists($connection, 'transactionLevel') && $connection->transactionLevel() > 0) {
-            $connection->afterCommit($callback);
+            try {
+                $connection->afterCommit($callback);
+            } catch (\Throwable) {
+                $callback();
+            }
         } else {
             $callback();
         }
@@ -310,7 +314,7 @@ trait AutoClearsCache
             return $strict;
         }
 
-        if (function_exists('app') && app()->isLocal()) {
+        if (function_exists('app') && method_exists(app(), 'isLocal') && app()->isLocal()) {
             return true;
         }
 

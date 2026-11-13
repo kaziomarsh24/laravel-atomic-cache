@@ -78,10 +78,16 @@ class AtomicCache
         if ($userId !== null) {
             $clone->targetUserId = $userId;
         } else {
-            $authId = Auth::id();
+            $authId = null;
+            try {
+                $authId = Auth::id();
+            } catch (Throwable) {
+                // Facade root or auth not initialized
+            }
+
             if ($authId !== null) {
                 $clone->targetUserId = $authId;
-            } elseif (function_exists('session') && session()->isStarted() && session()->getId()) {
+            } elseif (function_exists('app') && app()->bound('session') && function_exists('session') && session()->isStarted() && session()->getId()) {
                 $clone->targetUserId = 'guest:' . session()->getId();
             } else {
                 $clone->targetUserId = 'guest';
@@ -324,6 +330,122 @@ class AtomicCache
 
         return $this->forUser($userId)
             ->remember($key, $resolvedCallback, $customTtl, $tags);
+    }
+
+    /**
+     * Stale-While-Revalidate (SWR) cache remember with grace period.
+     * Returns stale cached value immediately during the grace window while
+     * refreshing in the background using an atomic distributed lock.
+     *
+     * @param string $key
+     * @param array{0: mixed, 1: mixed}|mixed $ttlAndGrace [fresh_ttl, grace_ttl] or fresh_ttl
+     * @param Closure $callback
+     * @param array $tags
+     * @return mixed
+     */
+    public function flexible(
+        string $key,
+        mixed $ttlAndGrace,
+        Closure $callback,
+        array $tags = []
+    ): mixed {
+        if ($this->shouldBypassCache()) {
+            return $callback();
+        }
+
+        $freshTtl = null;
+        $graceTtl = null;
+
+        if (is_array($ttlAndGrace) && count($ttlAndGrace) >= 2) {
+            $freshTtl = static::parseTtlSeconds($ttlAndGrace[0]);
+            $graceTtl = static::parseTtlSeconds($ttlAndGrace[1]);
+        } else {
+            $freshTtl = static::parseTtlSeconds($ttlAndGrace);
+            $graceTtl = max(60, (int) ($freshTtl * 0.2));
+        }
+
+        $freshTtl = $freshTtl ?? (int) config('atomic-cache.default_ttl', 3600);
+        $graceTtl = $graceTtl ?? max(60, (int) ($freshTtl * 0.2));
+        $totalTtl = $freshTtl + $graceTtl;
+
+        $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
+        $sentinel = new \stdClass();
+        $cached = $this->get($key, $sentinel, $tags);
+
+        if ($cached !== $sentinel && is_array($cached) && array_key_exists('__swr_value__', $cached) && isset($cached['__swr_fresh_until__'])) {
+            $currentTime = time();
+            // 1. Fresh hit: within fresh TTL
+            if ($currentTime <= $cached['__swr_fresh_until__']) {
+                return $cached['__swr_value__'];
+            }
+
+            // 2. Stale hit (within grace period): return stale value immediately and trigger non-blocking refresh
+            $staleValue = $cached['__swr_value__'];
+            $this->revalidateInBackground($key, $callback, $freshTtl, $totalTtl, $tags);
+
+            return $staleValue;
+        }
+
+        // 3. Cache miss: populate synchronously with atomic locking
+        $result = $this->rememberWithLock(
+            $key,
+            $totalTtl,
+            function () use ($callback, $freshTtl) {
+                $value = $callback();
+                return [
+                    '__swr_value__' => $value,
+                    '__swr_fresh_until__' => time() + $freshTtl,
+                ];
+            },
+            $tags
+        );
+
+        if (is_array($result) && array_key_exists('__swr_value__', $result)) {
+            return $result['__swr_value__'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Revalidate stale cache entry using a non-blocking atomic lock.
+     */
+    protected function revalidateInBackground(string $key, Closure $callback, int $freshTtl, int $totalTtl, array $tags): void
+    {
+        $store = $this->getRawStore();
+        $lockKey = 'lock:swr:' . $this->formatKey($key);
+
+        if (!$this->supportsLock($store)) {
+            try {
+                $value = $callback();
+                $payload = [
+                    '__swr_value__' => $value,
+                    '__swr_fresh_until__' => time() + $freshTtl,
+                ];
+                $this->put($key, $payload, $totalTtl, $tags);
+            } catch (Throwable) {}
+            return;
+        }
+
+        try {
+            $lock = $store->lock($lockKey, 30);
+            if ($lock->get()) {
+                try {
+                    $value = $callback();
+                    $payload = [
+                        '__swr_value__' => $value,
+                        '__swr_fresh_until__' => time() + $freshTtl,
+                    ];
+                    $this->put($key, $payload, $totalTtl, $tags);
+                } finally {
+                    try {
+                        $lock->release();
+                    } catch (Throwable) {}
+                }
+            }
+        } catch (Throwable $e) {
+            Log::info("[AtomicCache] SWR non-blocking lock revalidation bypassed for '{$key}': " . $e->getMessage());
+        }
     }
 
     /**

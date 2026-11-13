@@ -79,8 +79,13 @@ return [
 | `ATOMIC_CACHE_STAMPEDE_ENABLED` | `true` | Enable atomic distributed locking by default |
 | `ATOMIC_CACHE_LOCK_SECONDS` | `10` | Maximum lock hold duration during closure calculation |
 | `ATOMIC_CACHE_WAIT_SECONDS` | `5` | Maximum seconds concurrent requests will wait for computation |
+| `ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS` | `true` | Bypass cache reads/writes inside active DB transactions to prevent dirty reads |
+| `ATOMIC_CACHE_STRICT_MODE` | `null` | Strict parent relation validation (`null` enables in local development) |
 | `ATOMIC_CACHE_COMPRESSION_ENABLED`| `true` | Auto-compress payloads exceeding compression threshold |
 | `ATOMIC_CACHE_COMPRESSION_THRESHOLD`| `51200` | Minimum serialized byte size to trigger Gzip compression (50 KB) |
+| `ATOMIC_CACHE_COMPRESSION_LEVEL` | `6` | Gzip compression level (1-9) |
+| `ATOMIC_CACHE_SELF_HEALING` | `true` | Purges corrupt/truncated cache entries and recalculates on cache miss |
+| `ATOMIC_CACHE_LOG_CORRUPTED` | `true` | Logs warnings when a corrupted cache payload is detected and self-healed |
 | `ATOMIC_CACHE_CHUNKING_ENABLED` | `true` | Auto-partition large datasets into driver-safe chunk keys |
 | `ATOMIC_CACHE_CHUNKING_THRESHOLD` | `1000` | Item count threshold required to trigger transparent chunking |
 | `ATOMIC_CACHE_CHUNK_SIZE` | `1000` | Item count per partitioned chunk |

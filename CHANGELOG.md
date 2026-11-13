@@ -5,6 +5,30 @@ All notable changes to `laravel-atomic-cache` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.6.0] - 2026-11-14
+
+### Added
+- **Stale-While-Revalidate (`AtomicCache::flexible()`):** Implemented high-performance Stale-While-Revalidate (SWR) caching inspired by Laravel 11's `Cache::flexible()`. Returns existing cached payloads instantly during the grace window (0ms user latency spike) while acquiring a non-blocking atomic distributed lock to recompute fresh data in the background. Supports automated grace duration calculation (`AtomicCache::flexible('key', 3600, ...)`), explicit `[fresh_ttl, grace_ttl]` tuples, and fluent tagging (`AtomicCache::tags([...])->flexible(...)`).
+- **Query Builder Pagination Macros (`atomicCachePaginate` & `atomicCacheSimplePaginate`):** Introduced dedicated macros on Eloquent and Query Builders for caching paginated result sets without model collection crashes. Automatically embeds page numbers, page names, per-page limits, and SQL fingerprints into deterministic cache keys and tags.
+- **Query Builder Aggregation Macros (`atomicCacheCount` & `atomicCacheExists`):** Added high-speed macros for caching `COUNT(*)` integer results and `EXISTS` boolean checks directly from the database without hydrating full model instances or Eloquent collections into memory.
+- **Separated User Scoping and Custom Tags in `HasAtomicCache::cache()`:** Updated `$this->cache()` in `HasAtomicCache` to accept distinct `bool $perUser = false` and `array $tags = []` parameters, allowing simultaneous user scoping and custom cache tags while preserving full backward-compatibility with legacy array-as-5th-argument calls.
+- **Documented Missing Environment Variables:** Added full documentation and default values for `ATOMIC_CACHE_BYPASS_DURING_TRANSACTIONS`, `ATOMIC_CACHE_STRICT_MODE`, `ATOMIC_CACHE_COMPRESSION_LEVEL`, `ATOMIC_CACHE_SELF_HEALING`, and `ATOMIC_CACHE_LOG_CORRUPTED` in `.env` reference tables across VitePress documentation and `README.md`.
+- **Fluent Tag Scoping on Global Helper (`atomic_cache(['tag1', 'tag2'])`):** Updated the global `atomic_cache()` helper to accept arrays of tags, allowing fluent chained calls like `atomic_cache(['products'])->remember(...)` without `TypeError`.
+
+### Fixed
+- **CLI & Queue Worker Request Resolution:** Guarded `shouldIncludeRequestQuery()` and `getSanitizedRequestQuery()` in `HasAtomicCache` to check if `request` is bound in the application container before calling `request()`, eliminating `BindingResolutionException: Target class [request] does not exist` in CLI commands, queue workers, and background jobs.
+- **Blade Directive DateTime TTL Support:** Resolved strict `?int` type-hinting on `AtomicCacheBladeHelper::setUp()` so that passing Carbon, `DateTimeInterface`, or `DateInterval` instances to `@atomicCache('key', now()->addHour())` parses properly without throwing a `TypeError`.
+- **Virtual Tag Initialization Atomic Add:** Replaced loose `get()` + `forever()` logic during first-time virtual tag initialization with atomic `$store->add()`, completely closing concurrent overwrite race conditions across File, Database, and non-taggable cache drivers.
+- **Lock Fallback Cache Re-Check (Stampede Defense):** Added an instant cache re-check before executing the fallback callback when `rememberWithLock` wait budget times out, preventing thundering herds from overwhelming the database if the original lock holder completed computation immediately as waiters timed out.
+- **Stateless API & Unbound Session Resolution:** Guarded `forUser()` in `AtomicCache` against `BindingResolutionException: Target class [session] does not exist` and `RuntimeException: A facade root has not been set` when running in stateless API endpoints, console commands, or testing harnesses without session middleware.
+- **Stateless API & Unbound Session Resolution:** Guarded `forUser()` in `AtomicCache` against `BindingResolutionException: Target class [session] does not exist` and `RuntimeException: A facade root has not been set` when running in stateless API endpoints, console commands, or testing harnesses without session middleware.
+- **Plain Container `version()` & `isLocal()` Crash Guard:** Replaced direct `app()->version()` and `app()->isLocal()` invocations with `method_exists()` checks in `ManagesVirtualTags` and `AutoClearsCache` to prevent fatal errors when used with standalone Illuminate containers lacking `Illuminate\Foundation\Application`.
+- **Query Macro `DateTimeInterface` / `DateInterval` TTL Parsing:** Resolved an issue where passing Carbon or `DateInterval` instances to `atomicCache()` ignored the provided duration due to strict `is_numeric()` checks; query macros now correctly parse all valid Laravel TTL types via `AtomicCache::parseTtlSeconds()`.
+- **Safe Serialization in `HasAtomicCache::normalizeArguments()`:** Wrapped object serialization in a `try/catch` fallback to `spl_object_hash()` to prevent fatal crashes when service methods receive non-serializable objects (PDO connections, closures, or generator wrappers).
+- **Connection `transactionsManager` Safety in `AutoClearsCache`:** Wrapped `$connection->afterCommit()` in `clearModelCacheOnCommit()` with fallback immediate execution to protect against mock or non-standard connections lacking a transaction manager.
+
+---
+
 ## [v1.5.0] - 2026-10-28
 
 ### Added
