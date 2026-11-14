@@ -349,10 +349,6 @@ class AtomicCache
         Closure $callback,
         array $tags = []
     ): mixed {
-        if ($this->shouldBypassCache()) {
-            return $callback();
-        }
-
         $freshTtl = null;
         $totalTtl = null;
 
@@ -373,6 +369,10 @@ class AtomicCache
 
         $freshTtl = $freshTtl ?? (int) config('atomic-cache.default_ttl', 3600);
         $totalTtl = $totalTtl ?? ($freshTtl + max(60, (int) ($freshTtl * 0.2)));
+
+        if ($this->shouldBypassCache()) {
+            return $callback();
+        }
 
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $sentinel = new \stdClass();

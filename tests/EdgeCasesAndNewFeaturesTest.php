@@ -243,6 +243,25 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     }
 
     /**
+     * flexible() throws InvalidArgumentException even when caching is disabled (early validation).
+     */
+    public function test_flexible_validates_tuple_even_when_caching_is_disabled(): void
+    {
+        config(['atomic-cache.enabled' => false]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must be strictly greater than the fresh TTL');
+
+        try {
+            AtomicCache::flexible('swr_disabled_invalid', [300, 60], function () {
+                return 'should_not_run';
+            });
+        } finally {
+            config(['atomic-cache.enabled' => true]);
+        }
+    }
+
+    /**
      * flexible() uses active tags — invalidating tag discards cached SWR envelope.
      */
     public function test_flexible_tag_invalidation_discards_swr_envelope(): void
