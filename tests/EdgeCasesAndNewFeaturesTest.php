@@ -729,6 +729,39 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     }
 
     /**
+     * Positional flexibility: passing array as 6th argument without passing lock.
+     */
+    public function test_has_atomic_cache_positional_tags_without_lock_parameter(): void
+    {
+        $service = new class {
+            use HasAtomicCache;
+            public string $cacheResource = 'pos_flex_svc';
+
+            public function getWithPositionalTags(array $tags)
+            {
+                // 6th argument is array of tags, 7th (lock) is omitted!
+                return $this->cache('pos_method', [], fn() => 'pos_result', 3600, false, $tags);
+            }
+
+            public function getWithPositionalLock(bool $lock)
+            {
+                // 6th argument is boolean lock!
+                return $this->cache('lock_method', [], fn() => 'lock_result', 3600, false, $lock);
+            }
+        };
+
+        $result1 = $service->getWithPositionalTags(['pos_tag_1', 'pos_tag_2']);
+        $this->assertEquals('pos_result', $result1);
+
+        // Check it cached under the tag
+        AtomicCache::clearTags('pos_tag_1');
+        $this->assertNull(AtomicCache::tags(['pos_tag_1'])->get('pos_flex_svc:pos_method'));
+
+        $result2 = $service->getWithPositionalLock(true);
+        $this->assertEquals('lock_result', $result2);
+    }
+
+    /**
      * Non-serializable arguments (Closures) are safely normalized — no crash.
      */
     public function test_has_atomic_cache_non_serializable_closure_argument(): void

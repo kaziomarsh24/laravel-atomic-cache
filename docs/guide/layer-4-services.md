@@ -79,14 +79,18 @@ public function cache(
     ?Closure $callback = null,
     mixed $ttl = null,
     ?bool $perUser = null,
-    bool $lock = false,
-    array $tags = []
+    array|bool $tags = [],
+    bool $lock = false
 ): mixed
 ```
 * **`ttl`**: Cache lifetime in seconds, Carbon instance, or DateInterval (defaults to class `$cacheTTL` property or `3600`).
 * **`perUser`**: Pass `true` to isolate the cache per authenticated user (`guest` for unauthenticated sessions).
-* **`lock: true`**: Activates atomic distributed locking to prevent stampede herd conditions during cache warmup.
-* **`tags`**: Pass an array of additional cache tags (e.g. `tags: ['categories', 'products']`) so changes in either table will invalidate this cache.
+* **`tags`**: Pass an array of additional cache tags (e.g. `tags: ['categories', 'products']`) so changes in either table will invalidate this cache. Can also be passed positionally without specifying `$lock`.
+* **`lock`**: Activates atomic distributed locking to prevent stampede herd conditions during cache warmup (can be passed as `lock: true` or boolean in positional call).
+
+> [!TIP]
+> **Flexible Argument Passing:**
+> You can pass custom `$tags` as an array directly (e.g. `$this->cache(..., false, ['products'])`) without needing to pass a dummy `$lock` parameter. If you only need distributed locking, you can pass boolean `true` as the 6th argument or use PHP 8 named arguments (`lock: true`, `tags: [...]`).
 
 ---
 
