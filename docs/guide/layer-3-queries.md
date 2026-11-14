@@ -55,12 +55,18 @@ $paginated = Post::atomicCachePaginate(perPage: 20, ttl: 1800);
 $simplePosts = Post::where('status', 'published')
     ->atomicCacheSimplePaginate(15, 3600);
 
-// 3. Cached Count Aggregation (SQL COUNT(*) without hydrating full models into memory):
-$totalActiveUsers = User::where('active', 1)->atomicCacheCount(300);
+// 3. Cached Count Aggregation (SQL COUNT without hydrating full models into memory):
+$totalActiveUsers = User::where('active', 1)->atomicCacheCount(300); // COUNT(*) with 300s TTL
+$uniqueSkus = Product::atomicCacheCount('sku', 600);                // COUNT('sku') with 600s TTL
+$customCount = Product::atomicCacheCount('*', 'active_prod_count', 600); // Custom key with 600s TTL
 
 // 4. Cached Exists Check (SQL EXISTS boolean):
 $hasPendingOrders = Order::where('status', 'pending')->atomicCacheExists(60);
 ```
+
+::: tip atomicCacheCount Parameter Order
+Following Laravel's native query builder `count($columns = '*')`, the first argument to `atomicCacheCount()` specifies the SQL column name (defaults to `'*'`). If a numeric integer or DateTime TTL is passed as the first argument (e.g. `atomicCacheCount(300)`), the macro automatically recognizes it as the cache TTL and counts `'*'`. To provide a custom cache key along with columns, pass: `atomicCacheCount('*', 'my_custom_key', 600)`.
+:::
 
 ---
 

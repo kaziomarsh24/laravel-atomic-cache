@@ -277,7 +277,7 @@ When high-traffic cache entries expire, requests must synchronously wait for dat
 * **Grace window (Stale):** Returns existing cached data **instantly** (0ms latency spike to users) while deferring background revalidation until after the HTTP response has been flushed to the client (via Laravel 11's `defer()` or `app()->terminating()`).
 * **Expired:** If past total lifetime or on initial cache miss, computes synchronously via distributed atomic locking.
 * **OCC Protected:** If models are updated and tags change while background revalidation is running, the stale write is safely discarded.
-* **Failure Backoff:** If the revalidation callback throws an exception (e.g. database down), the error is reported and the stale TTL is extended by 30 seconds to prevent bombarding failing backends.
+* **Failure Backoff & Expiration Ceiling:** If the revalidation callback throws an exception (e.g. database down), the error is reported and the stale TTL is extended by 30 seconds (bounded by remaining original expiration ceiling `__swr_expires_at__`), preventing broken services from serving zombie data indefinitely.
 
 ```php
 use KaziOmar\AtomicCache\Facades\AtomicCache;
@@ -745,12 +745,18 @@ $paginated = Post::atomicCachePaginate(perPage: 20, ttl: 1800);
 $simplePosts = Post::where('status', 'published')
     ->atomicCacheSimplePaginate(15, 3600);
 
-// 3. Cached Count Aggregation (SQL COUNT(*) without hydrating full models into memory):
-$totalActiveUsers = User::where('active', 1)->atomicCacheCount(300);
+// 3. Cached Count Aggregation (SQL COUNT without hydrating full models into memory):
+$totalActiveUsers = User::where('active', 1)->atomicCacheCount(300); // COUNT(*) with 300s TTL
+$uniqueSkus = Product::atomicCacheCount('sku', 600);                // COUNT('sku') with 600s TTL
+$customCount = Product::atomicCacheCount('*', 'active_prod_count', 600); // Custom key with 600s TTL
 
 // 4. Cached Exists Check (SQL EXISTS boolean):
 $hasPendingOrders = Order::where('status', 'pending')->atomicCacheExists(60);
 ```
+
+> [!TIP]
+> **`atomicCacheCount` Parameter Order:**
+> Following Laravel's native query builder `count($columns = '*')`, the first argument to `atomicCacheCount()` specifies the SQL column name (defaults to `'*'`). If a numeric integer or DateTime TTL is passed as the first argument (e.g. `atomicCacheCount(300)`), the macro automatically recognizes it as the cache TTL and counts `'*'`. To provide a custom cache key along with columns, pass: `atomicCacheCount('*', 'my_custom_key', 600)`.
 
 ---
 

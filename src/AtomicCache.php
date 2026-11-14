@@ -358,12 +358,11 @@ class AtomicCache
 
         if (is_array($ttlAndGrace) && count($ttlAndGrace) >= 2) {
             $freshTtl = static::parseTtlSeconds($ttlAndGrace[0]);
-            $secondVal = static::parseTtlSeconds($ttlAndGrace[1]);
-            // Laravel 11 Cache::flexible convention: [fresh_ttl, total_ttl]
-            if ($secondVal !== null && $freshTtl !== null && $secondVal > $freshTtl) {
-                $totalTtl = $secondVal;
-            } else {
-                $totalTtl = ($freshTtl ?? 3600) + ($secondVal ?? 720);
+            $totalTtl = static::parseTtlSeconds($ttlAndGrace[1]);
+
+            // Strict Laravel 11 Cache::flexible convention: [fresh_ttl, total_ttl]
+            if ($freshTtl !== null && $totalTtl !== null && $totalTtl <= $freshTtl) {
+                throw new \InvalidArgumentException("[AtomicCache] For flexible caching, the total TTL ({$totalTtl}s) must be strictly greater than the fresh TTL ({$freshTtl}s).");
             }
         } else {
             $freshTtl = static::parseTtlSeconds($ttlAndGrace);
@@ -408,11 +407,12 @@ class AtomicCache
         $result = $this->rememberWithLock(
             $key,
             $totalTtl,
-            function () use ($callback, $freshTtl) {
+            function () use ($callback, $freshTtl, $totalTtl) {
                 $value = $callback();
                 return [
                     '__swr_value__' => $value,
                     '__swr_fresh_until__' => time() + $freshTtl,
+                    '__swr_expires_at__' => time() + $totalTtl,
                 ];
             },
             $tags
@@ -474,6 +474,7 @@ class AtomicCache
                 $payload = [
                     '__swr_value__' => $value,
                     '__swr_fresh_until__' => time() + $freshTtl,
+                    '__swr_expires_at__' => time() + $totalTtl,
                 ];
                 $this->put($key, $payload, $totalTtl, $tags, $tagVersionsBefore);
             } else {
@@ -486,14 +487,16 @@ class AtomicCache
                 Log::warning("[AtomicCache] SWR revalidation callback failed for '{$key}': " . $e->getMessage());
             }
 
-            // Failure Backoff: Extend fresh_until by 30 seconds on the existing stale payload
-            // so failing backends (e.g. database down) are not thrashed on every incoming request
+            // Failure Backoff: Extend fresh_until by 30 seconds on the existing stale payload,
+            // but capped at remaining __swr_expires_at__ so stale entries are never resurrected indefinitely.
             try {
                 $sentinel = new \stdClass();
                 $existing = $this->get($key, $sentinel, $tags);
                 if ($existing !== $sentinel && is_array($existing) && isset($existing['__swr_value__'])) {
+                    $expiresAt = $existing['__swr_expires_at__'] ?? (time() + $totalTtl);
+                    $remaining = max(1, $expiresAt - time());
                     $existing['__swr_fresh_until__'] = time() + 30;
-                    $this->put($key, $existing, $totalTtl, $tags);
+                    $this->put($key, $existing, $remaining, $tags);
                 }
             } catch (Throwable) {}
         }

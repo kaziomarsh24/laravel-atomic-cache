@@ -156,6 +156,12 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
 
     // ══════════════════════════════════════════════════════════════════════════
     // 1. flexible() / SWR Edge Cases
+    // Note on SWR Deferral Testing:
+    // In a live web context (FastCGI / PHP-FPM / Octane), revalidation is deferred via
+    // defer() (Laravel 11.23+) or app()->terminating() so the HTTP response is sent
+    // immediately to the client with 0ms latency penalty.
+    // In a CLI / testing environment (app()->runningInConsole() === true), revalidation
+    // executes synchronously so test assertions and background jobs have immediate, deterministic data.
     // ══════════════════════════════════════════════════════════════════════════
 
     /**
@@ -164,7 +170,7 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     public function test_flexible_cache_miss_populates_synchronously(): void
     {
         $count = 0;
-        $result = AtomicCache::flexible('swr_miss_key', [60, 15], function () use (&$count) {
+        $result = AtomicCache::flexible('swr_miss_key', [60, 240], function () use (&$count) {
             $count++;
             return "swr_value_{$count}";
         });
@@ -180,13 +186,13 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     public function test_flexible_returns_fresh_value_within_fresh_ttl(): void
     {
         $count = 0;
-        AtomicCache::flexible('swr_fresh_key', [3600, 900], function () use (&$count) {
+        AtomicCache::flexible('swr_fresh_key', [3600, 4500], function () use (&$count) {
             $count++;
             return "value_{$count}";
         });
 
         // Second call — still within fresh window
-        $result2 = AtomicCache::flexible('swr_fresh_key', [3600, 900], function () use (&$count) {
+        $result2 = AtomicCache::flexible('swr_fresh_key', [3600, 4500], function () use (&$count) {
             $count++;
             return "value_{$count}";
         });
@@ -196,7 +202,7 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     }
 
     /**
-     * flexible() with zero grace period: single TTL scalar, auto-calculates 20% grace.
+     * flexible() with single scalar TTL auto-calculates 20% grace.
      */
     public function test_flexible_with_scalar_ttl_auto_calculates_grace(): void
     {
@@ -211,34 +217,29 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     }
 
     /**
-     * flexible() with explicit zero grace period: [freshTtl, 0].
-     * Zero grace collapses to minimum 60s internally, still functions.
+     * flexible() strictly validates that total TTL must be greater than fresh TTL.
      */
-    public function test_flexible_with_zero_grace_period_handles_safely(): void
+    public function test_flexible_throws_when_total_ttl_is_not_greater_than_fresh_ttl(): void
     {
-        $count = 0;
-        // graceTtl=0 → code does max(60, ...) internally, min 60s applied
-        $result = AtomicCache::flexible('swr_zero_grace', [120, 0], function () use (&$count) {
-            $count++;
-            return "zero_grace_{$count}";
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must be strictly greater than the fresh TTL');
+
+        AtomicCache::flexible('swr_equal_ttl', [120, 120], function () {
+            return 'should_fail';
         });
-        $this->assertEquals('zero_grace_1', $result);
-        $this->assertEquals(1, $count);
     }
 
     /**
-     * flexible() with negative grace period: handled safely (not crash).
+     * flexible() throws when total TTL is less than fresh TTL.
      */
-    public function test_flexible_with_negative_grace_period_does_not_crash(): void
+    public function test_flexible_throws_when_total_ttl_is_less_than_fresh_ttl(): void
     {
-        $count = 0;
-        // parseTtlSeconds(-30) = -30, totalTtl = freshTtl + (-30) may be low, but code must not throw
-        $result = AtomicCache::flexible('swr_neg_grace', [300, -30], function () use (&$count) {
-            $count++;
-            return "neg_grace_{$count}";
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must be strictly greater');
+
+        AtomicCache::flexible('swr_less_ttl', [300, 60], function () {
+            return 'should_fail';
         });
-        $this->assertEquals('neg_grace_1', $result);
-        $this->assertEquals(1, $count);
     }
 
     /**
@@ -249,7 +250,7 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
         $count = 0;
         $tag   = 'swr_tag_' . uniqid();
 
-        AtomicCache::tags([$tag])->flexible('swr_tagged_key', [3600, 900], function () use (&$count) {
+        AtomicCache::tags([$tag])->flexible('swr_tagged_key', [3600, 4500], function () use (&$count) {
             $count++;
             return "tagged_{$count}";
         });
@@ -260,7 +261,7 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
         AtomicCache::clearTags([$tag]);
 
         // After invalidation, fresh compute should happen
-        $result2 = AtomicCache::tags([$tag])->flexible('swr_tagged_key', [3600, 900], function () use (&$count) {
+        $result2 = AtomicCache::tags([$tag])->flexible('swr_tagged_key', [3600, 4500], function () use (&$count) {
             $count++;
             return "tagged_{$count}";
         });
@@ -277,11 +278,11 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
         config(['atomic-cache.enabled' => false]);
 
         $count = 0;
-        $r1 = AtomicCache::flexible('swr_disabled', [60, 15], function () use (&$count) {
+        $r1 = AtomicCache::flexible('swr_disabled', [60, 120], function () use (&$count) {
             $count++;
             return "bypass_{$count}";
         });
-        $r2 = AtomicCache::flexible('swr_disabled', [60, 15], function () use (&$count) {
+        $r2 = AtomicCache::flexible('swr_disabled', [60, 120], function () use (&$count) {
             $count++;
             return "bypass_{$count}";
         });
@@ -322,24 +323,49 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     }
 
     /**
+     * flexible() backoff does not extend beyond original expiration ceiling (__swr_expires_at__).
+     */
+    public function test_flexible_backoff_respects_expiration_ceiling(): void
+    {
+        $ceiling = time() + 15; // 15 seconds remaining
+        $stalePayload = [
+            '__swr_value__'       => 'ceiling_val',
+            '__swr_fresh_until__' => time() - 5,
+            '__swr_expires_at__'  => $ceiling,
+        ];
+        AtomicCache::put('swr_ceiling_key', $stalePayload, 60);
+
+        // When revalidation fails, fresh_until becomes time() + 30, but entry TTL is bounded by remaining ceiling
+        $result = AtomicCache::flexible('swr_ceiling_key', [60, 240], function () {
+            throw new \RuntimeException('DB is still down!');
+        });
+
+        $this->assertEquals('ceiling_val', $result);
+        $cached = AtomicCache::get('swr_ceiling_key');
+        $this->assertEquals('ceiling_val', $cached['__swr_value__']);
+        $this->assertGreaterThan(time(), $cached['__swr_fresh_until__']);
+        $this->assertEquals($ceiling, $cached['__swr_expires_at__']);
+    }
+
+    /**
      * flexible() with Carbon/DateTimeInterface/DateInterval TTL types.
      */
     public function test_flexible_accepts_carbon_and_dateinterval_ttl(): void
     {
         $count = 0;
 
-        // Carbon freshTtl, int graceTtl
+        // Carbon freshTtl (30m), Carbon totalTtl (45m)
         $r1 = AtomicCache::flexible(
             'swr_carbon_ttl',
-            [Carbon::now()->addMinutes(30), Carbon::now()->addMinutes(5)],
+            [Carbon::now()->addMinutes(30), Carbon::now()->addMinutes(45)],
             function () use (&$count) { $count++; return "carbon_{$count}"; }
         );
         $this->assertEquals('carbon_1', $r1);
 
-        // DateInterval freshTtl
+        // DateInterval freshTtl (1h = 3600s), totalTtl (4500s)
         $r2 = AtomicCache::flexible(
             'swr_dateinterval_ttl',
-            [new DateInterval('PT1H'), 300],
+            [new DateInterval('PT1H'), 4500],
             function () use (&$count) { $count++; return "interval_{$count}"; }
         );
         $this->assertEquals('interval_2', $r2);

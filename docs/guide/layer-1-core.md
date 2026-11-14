@@ -73,7 +73,7 @@ When high-traffic cache entries expire, requests must synchronously wait for dat
 * **Grace window (Stale):** Returns existing cached data **instantly** (0ms latency spike to users) while deferring background revalidation until after the HTTP response has been flushed to the client (via Laravel 11's `defer()` or `app()->terminating()`).
 * **Expired:** If past the total lifetime or on initial cache miss, computes synchronously via distributed atomic locking.
 * **OCC Protected:** If models are updated and tags change while background revalidation is running, the stale write is safely discarded.
-* **Failure Backoff:** If the revalidation callback throws an exception (e.g. database down), the error is reported and the stale TTL is extended by 30 seconds to prevent bombarding failing backends.
+* **Failure Backoff & Expiration Ceiling:** If the revalidation callback throws an exception (e.g. database down), the error is reported and the stale TTL is extended by 30 seconds—bounded strictly by the remaining original expiration ceiling (`__swr_expires_at__`), preventing broken services from serving zombie data indefinitely.
 
 ```php
 use KaziOmar\AtomicCache\Facades\AtomicCache;
@@ -83,8 +83,8 @@ $feed = AtomicCache::flexible('homepage_feed', 3600, function () {
     return HeavyFeedService::getFeed();
 });
 
-// 2. Laravel 11 Cache::flexible convention: [fresh_seconds, total_seconds]
-// Fresh for 300s (5m), total lifetime 1800s (30m, meaning 25m grace window):
+// 2. Strict Laravel 11 Cache::flexible convention: [fresh_seconds, total_seconds]
+// Total TTL must be strictly greater than fresh TTL (e.g. 300s fresh, 1800s total = 1500s grace):
 $stats = AtomicCache::flexible('global_stats', [300, 1800], function () {
     return HeavyReportingService::calculate();
 });
