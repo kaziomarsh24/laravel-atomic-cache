@@ -37,7 +37,7 @@ trait HasAtomicCache
      * @param Closure|null $callback
      * @param mixed $ttl
      * @param bool|null $perUser Whether to scope to current authenticated user
-     * @param array|bool $tags Additional cache tags, or boolean lock if passed positionally
+     * @param array $tags Additional cache tags
      * @param bool $lock Distributed lock for stampede protection
      * @return mixed
      */
@@ -47,7 +47,7 @@ trait HasAtomicCache
         ?Closure $callback = null,
         mixed $ttl = null,
         ?bool $perUser = null,
-        array|bool $tags = [],
+        array $tags = [],
         bool $lock = false
     ): mixed {
         if ($callback === null) {
@@ -55,12 +55,6 @@ trait HasAtomicCache
         }
         if (property_exists($this, 'cachingEnabled') && $this->cachingEnabled === false) {
             return $callback();
-        }
-
-        // Allow passing $lock as a boolean in the 6th positional argument
-        if (is_bool($tags)) {
-            $lock = $tags;
-            $tags = [];
         }
 
         $effectiveTtl = $ttl !== null

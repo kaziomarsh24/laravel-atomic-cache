@@ -79,18 +79,25 @@ public function cache(
     ?Closure $callback = null,
     mixed $ttl = null,
     ?bool $perUser = null,
-    array|bool $tags = [],
+    array $tags = [],
     bool $lock = false
 ): mixed
 ```
 * **`ttl`**: Cache lifetime in seconds, Carbon instance, or DateInterval (defaults to class `$cacheTTL` property or `3600`).
 * **`perUser`**: Pass `true` to isolate the cache per authenticated user (`guest` for unauthenticated sessions).
-* **`tags`**: Pass an array of additional cache tags (e.g. `tags: ['categories', 'products']`) so changes in either table will invalidate this cache. Can also be passed positionally without specifying `$lock`.
-* **`lock`**: Activates atomic distributed locking to prevent stampede herd conditions during cache warmup (can be passed as `lock: true` or boolean in positional call).
+* **`tags`**: Pass an array of additional cache tags (e.g. `tags: ['categories', 'products']`) so changes in either table will invalidate this cache.
+* **`lock`**: Activates atomic distributed locking to prevent stampede herd conditions during cache warmup (defaults to `false`).
 
 > [!TIP]
-> **Flexible Argument Passing:**
-> You can pass custom `$tags` as an array directly (e.g. `$this->cache(..., false, ['products'])`) without needing to pass a dummy `$lock` parameter. If you only need distributed locking, you can pass boolean `true` as the 6th argument or use PHP 8 named arguments (`lock: true`, `tags: [...]`).
+> **Positional & Named Argument Flexibility:**
+> Because `$tags` is placed before `$lock`, you can pass custom tags directly without supplying a dummy lock:
+> ```php
+> // Positional call with tags:
+> return $this->cache(__FUNCTION__, func_get_args(), $callback, 3600, false, ['categories', 'products']);
+> 
+> // Or use PHP 8 named arguments:
+> return $this->cache(__FUNCTION__, func_get_args(), $callback, tags: ['categories', 'products'], lock: true);
+> ```
 
 ---
 

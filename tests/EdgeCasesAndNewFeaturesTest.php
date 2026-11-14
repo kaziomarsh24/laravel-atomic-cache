@@ -774,9 +774,9 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     }
 
     /**
-     * Positional flexibility: passing array as 6th argument without passing lock.
+     * Named and positional argument support: $tags is 6th and $lock is 7th (last).
      */
-    public function test_has_atomic_cache_positional_tags_without_lock_parameter(): void
+    public function test_has_atomic_cache_named_arguments_for_lock_and_tags(): void
     {
         $service = new class {
             use HasAtomicCache;
@@ -784,14 +784,14 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
 
             public function getWithPositionalTags(array $tags)
             {
-                // 6th argument is array of tags, 7th (lock) is omitted!
+                // Positional 6th argument is $tags, 7th ($lock) is omitted (defaults false)
                 return $this->cache('pos_method', [], fn() => 'pos_result', 3600, false, $tags);
             }
 
-            public function getWithPositionalLock(bool $lock)
+            public function getWithNamedLock(bool $lock)
             {
-                // 6th argument is boolean lock!
-                return $this->cache('lock_method', [], fn() => 'lock_result', 3600, false, $lock);
+                // Named argument lock: true
+                return $this->cache('lock_method', [], fn() => 'lock_result', 3600, lock: $lock);
             }
         };
 
@@ -802,7 +802,7 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
         AtomicCache::clearTags('pos_tag_1');
         $this->assertNull(AtomicCache::tags(['pos_tag_1'])->get('pos_flex_svc:pos_method'));
 
-        $result2 = $service->getWithPositionalLock(true);
+        $result2 = $service->getWithNamedLock(true);
         $this->assertEquals('lock_result', $result2);
     }
 

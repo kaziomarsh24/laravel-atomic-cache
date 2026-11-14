@@ -98,6 +98,10 @@ $products = AtomicCache::tags(['products'])
 When a model is updated or deleted, `AutoClearsCache` immediately flushes its tags, which evicts the cache entry completely rather than leaving it in a stale state. SWR's grace window serves stale data specifically when a cache entry crosses its natural TTL boundary without models having changed.
 :::
 
+::: info SWR SAPI & Deferred Execution
+Non-blocking background revalidation requires a web server environment that supports post-response flushing, such as **PHP-FPM** (with FastCGI response flushing) or **Laravel Octane** (FrankenPHP, RoadRunner, Swoole). In single-threaded blocking environments (such as local `php artisan serve` or CLI / queue commands), revalidation executes synchronously before returning.
+:::
+
 ---
 
 ### 1.4 Virtual Tagging Engine (Native & Non-Taggable Stores)
