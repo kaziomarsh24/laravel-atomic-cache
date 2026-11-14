@@ -66,20 +66,20 @@ class PerUserTagService
 
     public function fetch(string $method, array $customTags = []): mixed
     {
-        return $this->cache($method, [], fn() => "data_for_{$method}", null, true, $customTags);
+        return $this->cache($method, [], fn() => "data_for_{$method}", ttl: null, perUser: true, lock: false, tags: $customTags);
     }
 }
 
-class LegacyTagsArrayService
+class CustomTagsService
 {
     use HasAtomicCache;
 
-    public string $cacheResource = 'legacy_svc';
+    public string $cacheResource = 'custom_tags_svc';
 
-    /** Use 5th-argument array-of-tags (backward-compat) */
-    public function fetchLegacy(): mixed
+    /** Use explicit lock and tags arguments */
+    public function fetchWithTags(): mixed
     {
-        return $this->cache('legacy_method', [], fn() => 'legacy_value', null, ['extra_tag_A', 'extra_tag_B']);
+        return $this->cache('tagged_method', [], fn() => 'tagged_value', ttl: null, perUser: false, lock: false, tags: ['extra_tag_A', 'extra_tag_B']);
     }
 }
 
@@ -707,21 +707,21 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
     }
 
     /**
-     * Backward-compatible 5th-argument as array of tags.
+     * Clean parameter order: bool $lock = false, array $tags = [].
      */
-    public function test_has_atomic_cache_backward_compatible_array_as_5th_argument(): void
+    public function test_has_atomic_cache_clean_parameter_order_with_tags(): void
     {
-        $svc = new LegacyTagsArrayService();
-        $result = $svc->fetchLegacy();
-        $this->assertEquals('legacy_value', $result);
+        $svc = new CustomTagsService();
+        $result = $svc->fetchWithTags();
+        $this->assertEquals('tagged_value', $result);
 
         // Clear extra_tag_A — should bust the cache (tags were merged)
         AtomicCache::clearTags(['extra_tag_A']);
 
         // Now compute again (simulate by calling fresh remember on same key)
         $count = 0;
-        $r2 = AtomicCache::tags(['legacy_svc', 'extra_tag_A', 'extra_tag_B'])->remember(
-            'legacy_svc:legacy_method',
+        $r2 = AtomicCache::tags(['custom_tags_svc', 'extra_tag_A', 'extra_tag_B'])->remember(
+            'custom_tags_svc:tagged_method',
             function () use (&$count) { $count++; return "re_computed_{$count}"; },
             3600
         );
@@ -787,7 +787,10 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
      */
     public function test_has_atomic_cache_per_user_false_shares_across_users(): void
     {
-        $svc = new LegacyTagsArrayService(); // cachePerUser not set, defaults false
+        $svc = new class {
+            use HasAtomicCache;
+            public string $cacheResource = 'legacy_svc';
+        };
         AtomicCache::tags(['legacy_svc'])->put('legacy_svc:shared_key', 'shared_value', 3600);
 
         $r1 = AtomicCache::forUser(1)->tags(['legacy_svc'])->get('legacy_svc:shared_key');
@@ -1153,10 +1156,12 @@ class EdgeCasesAndNewFeaturesTest extends TestCase
 
         // Must return stale value
         $this->assertEquals('occ_stale_value', $result);
-        // After tag invalidation, the OCC-discarded write means old key is gone
-        // (virtual tag version rotated, so cache miss on old key)
-        // The new_value must NOT be cached under the old tag version
-        // (This is the OCC guarantee)
+
+        // After tag invalidation, the OCC-discarded write means the tag version rotated,
+        // so subsequent read under that tag must be a cache miss (or compute fresh)
+        $sentinel = new \stdClass();
+        $cachedUnderRotatedTag = AtomicCache::tags([$tag])->get($key, $sentinel);
+        $this->assertSame($sentinel, $cachedUnderRotatedTag, 'Stale write must have been discarded due to OCC tag rotation');
     }
 
     /**

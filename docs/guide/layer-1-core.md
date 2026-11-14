@@ -70,26 +70,33 @@ $stats = AtomicCache::rememberWithLock('annual_sales_report', 86400, function ()
 
 When high-traffic cache entries expire, requests must synchronously wait for database computation. `AtomicCache::flexible()` implements the **Stale-While-Revalidate (SWR)** pattern:
 * **Fresh window:** Returns cached data in `< 1ms`.
-* **Grace window (Stale):** Returns existing cached data **instantly** (0ms latency spike to users) while acquiring a non-blocking atomic distributed lock to revalidate and refresh the cache in the background.
-* **Expired:** If past the grace period or initial cache miss, computes via distributed atomic locking.
+* **Grace window (Stale):** Returns existing cached data **instantly** (0ms latency spike to users) while deferring background revalidation until after the HTTP response has been flushed to the client (via Laravel 11's `defer()` or `app()->terminating()`).
+* **Expired:** If past the total lifetime or on initial cache miss, computes synchronously via distributed atomic locking.
+* **OCC Protected:** If models are updated and tags change while background revalidation is running, the stale write is safely discarded.
+* **Failure Backoff:** If the revalidation callback throws an exception (e.g. database down), the error is reported and the stale TTL is extended by 30 seconds to prevent bombarding failing backends.
 
 ```php
 use KaziOmar\AtomicCache\Facades\AtomicCache;
 
-// Auto-grace: 3600s fresh TTL, grace period is automatically computed (e.g. 720s)
+// 1. Auto-grace: 3600s fresh TTL, grace period is automatically computed (+20%):
 $feed = AtomicCache::flexible('homepage_feed', 3600, function () {
     return HeavyFeedService::getFeed();
 });
 
-// Explicit fresh TTL and grace period: [fresh_seconds, grace_seconds]
+// 2. Laravel 11 Cache::flexible convention: [fresh_seconds, total_seconds]
+// Fresh for 300s (5m), total lifetime 1800s (30m, meaning 25m grace window):
 $stats = AtomicCache::flexible('global_stats', [300, 1800], function () {
     return HeavyReportingService::calculate();
 });
 
-// Tagged SWR caching:
+// 3. Tagged SWR caching:
 $products = AtomicCache::tags(['products'])
     ->flexible('featured', [600, 3600], fn() => Product::featured());
 ```
+
+::: tip SWR & Model Invalidation Note
+When a model is updated or deleted, `AutoClearsCache` immediately flushes its tags, which evicts the cache entry completely rather than leaving it in a stale state. SWR's grace window serves stale data specifically when a cache entry crosses its natural TTL boundary without models having changed.
+:::
 
 ---
 

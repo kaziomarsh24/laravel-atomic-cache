@@ -242,7 +242,23 @@ class AtomicCacheServiceProvider extends ServiceProvider
                 ? (int) $perPage
                 : ($isEloquent ? $this->getModel()->getPerPage() : 15);
 
-            $paginationFingerprint = "page:{$pageName}:{$resolvedPage}:per_page:{$effectivePerPage}:cols:" . implode(',', $columns);
+            $colsNormalized = array_map(function ($col) {
+                if (is_object($col)) {
+                    if (method_exists($col, 'getValue')) {
+                        try {
+                            return (string) $col->getValue(\Illuminate\Support\Facades\DB::connection()->getQueryGrammar());
+                        } catch (\Throwable) {
+                            return spl_object_hash($col);
+                        }
+                    } elseif (method_exists($col, '__toString')) {
+                        return (string) $col;
+                    }
+                    return spl_object_hash($col);
+                }
+                return (string) $col;
+            }, $columns);
+
+            $paginationFingerprint = "page:{$pageName}:{$resolvedPage}:per_page:{$effectivePerPage}:cols:" . implode(',', $colsNormalized);
 
             $cacheKey = $customKey !== null
                 ? "{$table}:{$customKey}:paginate:{$paginationFingerprint}"
@@ -250,12 +266,20 @@ class AtomicCacheServiceProvider extends ServiceProvider
 
             $allTags = !empty($scope) ? array_merge(is_array($scope) ? $scope : [$scope], $tags) : array_merge($autoTags, $tags);
 
-            return \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
+            $paginator = \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
                 $cacheKey,
                 $effectiveTtl,
                 fn() => $this->paginate($perPage, $columns, $pageName, $page),
                 lock: $lock
             );
+
+            if ($paginator instanceof \Illuminate\Contracts\Pagination\Paginator && function_exists('url')) {
+                try {
+                    $paginator->setPath(url()->current());
+                } catch (\Throwable) {}
+            }
+
+            return $paginator;
         };
 
         \Illuminate\Database\Eloquent\Builder::macro('atomicCachePaginate', $paginateMacro);
@@ -300,7 +324,23 @@ class AtomicCacheServiceProvider extends ServiceProvider
                 ? (int) $perPage
                 : ($isEloquent ? $this->getModel()->getPerPage() : 15);
 
-            $paginationFingerprint = "spage:{$pageName}:{$resolvedPage}:per_page:{$effectivePerPage}:cols:" . implode(',', $columns);
+            $colsNormalized = array_map(function ($col) {
+                if (is_object($col)) {
+                    if (method_exists($col, 'getValue')) {
+                        try {
+                            return (string) $col->getValue(\Illuminate\Support\Facades\DB::connection()->getQueryGrammar());
+                        } catch (\Throwable) {
+                            return spl_object_hash($col);
+                        }
+                    } elseif (method_exists($col, '__toString')) {
+                        return (string) $col;
+                    }
+                    return spl_object_hash($col);
+                }
+                return (string) $col;
+            }, $columns);
+
+            $paginationFingerprint = "spage:{$pageName}:{$resolvedPage}:per_page:{$effectivePerPage}:cols:" . implode(',', $colsNormalized);
 
             $cacheKey = $customKey !== null
                 ? "{$table}:{$customKey}:spaginate:{$paginationFingerprint}"
@@ -308,36 +348,55 @@ class AtomicCacheServiceProvider extends ServiceProvider
 
             $allTags = !empty($scope) ? array_merge(is_array($scope) ? $scope : [$scope], $tags) : array_merge($autoTags, $tags);
 
-            return \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
+            $paginator = \KaziOmar\AtomicCache\Facades\AtomicCache::tags($allTags)->remember(
                 $cacheKey,
                 $effectiveTtl,
                 fn() => $this->simplePaginate($perPage, $columns, $pageName, $page),
                 lock: $lock
             );
+
+            if ($paginator instanceof \Illuminate\Contracts\Pagination\Paginator && function_exists('url')) {
+                try {
+                    $paginator->setPath(url()->current());
+                } catch (\Throwable) {}
+            }
+
+            return $paginator;
         };
 
         \Illuminate\Database\Eloquent\Builder::macro('atomicCacheSimplePaginate', $simplePaginateMacro);
         \Illuminate\Database\Query\Builder::macro('atomicCacheSimplePaginate', $simplePaginateMacro);
 
         $countMacro = function (
-            mixed $columnsOrTtl = '*',
+            mixed $columnsOrKeyOrTtl = '*',
             mixed $keyOrTtl = null,
             mixed $ttl = null,
             array $tags = [],
             bool $lock = false,
             string|array|null $scope = null
-        ) use ($resolveQueryMeta, $resolveTtlAndKey) {
+        ) use ($resolveQueryMeta) {
             $columns = '*';
+            $customKey = null;
             $passedTtl = null;
 
-            if (is_numeric($columnsOrTtl) || $columnsOrTtl instanceof \DateTimeInterface || $columnsOrTtl instanceof \DateInterval) {
-                $passedTtl = $columnsOrTtl;
-            } elseif (is_string($columnsOrTtl)) {
-                $columns = $columnsOrTtl;
+            if (is_numeric($columnsOrKeyOrTtl) || $columnsOrKeyOrTtl instanceof \DateTimeInterface || $columnsOrKeyOrTtl instanceof \DateInterval) {
+                $passedTtl = $columnsOrKeyOrTtl;
+            } elseif (is_string($columnsOrKeyOrTtl) && $columnsOrKeyOrTtl !== '*') {
+                $columns = $columnsOrKeyOrTtl;
+            }
+
+            if (is_numeric($keyOrTtl) || $keyOrTtl instanceof \DateTimeInterface || $keyOrTtl instanceof \DateInterval) {
+                $passedTtl = $keyOrTtl;
+            } elseif (is_string($keyOrTtl)) {
+                $customKey = $keyOrTtl;
+            }
+
+            if ($ttl !== null) {
+                $passedTtl = $ttl;
             }
 
             [$table, $modelClass, $fingerprint, $autoTags] = $resolveQueryMeta($this);
-            [$customKey, $effectiveTtl] = $resolveTtlAndKey($keyOrTtl, $ttl ?? $passedTtl);
+            $effectiveTtl = \KaziOmar\AtomicCache\AtomicCache::parseTtlSeconds($passedTtl);
 
             $cacheKey = $customKey !== null
                 ? "{$table}:{$customKey}:count:{$columns}"

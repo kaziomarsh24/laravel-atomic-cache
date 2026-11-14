@@ -77,16 +77,16 @@ public function cache(
     string $method,
     array $args = [],
     ?Closure $callback = null,
-    ?int $ttl = null,
-    bool|array|null $perUserOrTags = null,
-    bool $lock = false
+    mixed $ttl = null,
+    ?bool $perUser = null,
+    bool $lock = false,
+    array $tags = []
 ): mixed
 ```
-* **`ttl`**: Cache lifetime in seconds (defaults to class `$cacheTTL` property or `3600`).
-* **`perUserOrTags`**: 
-  * Pass `true` to isolate the cache per authenticated user (`guest` for unauthenticated sessions).
-  * Pass an array of tags (e.g. `perUserOrTags: ['categories', 'products']`) if the query depends on multiple database tables so changes in either table will invalidate this cache.
+* **`ttl`**: Cache lifetime in seconds, Carbon instance, or DateInterval (defaults to class `$cacheTTL` property or `3600`).
+* **`perUser`**: Pass `true` to isolate the cache per authenticated user (`guest` for unauthenticated sessions).
 * **`lock: true`**: Activates atomic distributed locking to prevent stampede herd conditions during cache warmup.
+* **`tags`**: Pass an array of additional cache tags (e.g. `tags: ['categories', 'products']`) so changes in either table will invalidate this cache.
 
 ---
 

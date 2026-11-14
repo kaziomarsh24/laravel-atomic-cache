@@ -36,9 +36,9 @@ trait HasAtomicCache
      * @param array $args
      * @param Closure|null $callback
      * @param mixed $ttl
-     * @param bool|array|null $perUser Whether to scope to current user, or an array of tags (for backward compatibility)
+     * @param bool|null $perUser Whether to scope to current authenticated user
+     * @param bool $lock Distributed lock for stampede protection
      * @param array $tags Additional cache tags
-     * @param bool $lock
      * @return mixed
      */
     public function cache(
@@ -46,21 +46,15 @@ trait HasAtomicCache
         array $args = [],
         ?Closure $callback = null,
         mixed $ttl = null,
-        bool|array|null $perUser = null,
-        array $tags = [],
-        bool $lock = false
+        ?bool $perUser = null,
+        bool $lock = false,
+        array $tags = []
     ): mixed {
         if ($callback === null) {
             throw new \InvalidArgumentException("[AtomicCache] Callback closure is required.");
         }
         if (property_exists($this, 'cachingEnabled') && $this->cachingEnabled === false) {
             return $callback();
-        }
-
-        // Backward compatibility: if 5th parameter is passed as an array of tags
-        if (is_array($perUser)) {
-            $tags = !empty($tags) ? array_merge($perUser, $tags) : $perUser;
-            $perUser = null;
         }
 
         $effectiveTtl = $ttl !== null

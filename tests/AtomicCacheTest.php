@@ -1757,19 +1757,8 @@ class AtomicCacheTest extends TestCase
                     fn() => 'user_and_tags_result',
                     ttl: 60,
                     perUser: $perUser,
+                    lock: false,
                     tags: $tags
-                );
-            }
-
-            public function getDataLegacy(array $tags)
-            {
-                // Passing array as 5th argument for BC
-                return $this->cache(
-                    'getDataLegacy',
-                    func_get_args(),
-                    fn() => 'legacy_tags_result',
-                    ttl: 60,
-                    perUser: $tags
                 );
             }
         };
@@ -1780,11 +1769,7 @@ class AtomicCacheTest extends TestCase
 
         // Invalidate via custom tag
         AtomicCache::clearTags('custom_tag_1');
-
-        // Test backward-compatibility where 5th argument is array of tags
-        $resultLegacy = $service->getDataLegacy(['legacy_tag_a']);
-        $this->assertEquals('legacy_tags_result', $resultLegacy);
-        AtomicCache::clearTags('legacy_tag_a');
+        $this->assertNull(AtomicCache::tags(['custom_tag_1'])->get('test_service:getData'));
     }
 
     public function test_atomic_cache_paginate_and_simple_paginate(): void

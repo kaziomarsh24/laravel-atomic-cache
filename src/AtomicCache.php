@@ -335,10 +335,10 @@ class AtomicCache
     /**
      * Stale-While-Revalidate (SWR) cache remember with grace period.
      * Returns stale cached value immediately during the grace window while
-     * refreshing in the background using an atomic distributed lock.
+     * refreshing in the background (deferred until after response) using an atomic distributed lock.
      *
      * @param string $key
-     * @param array{0: mixed, 1: mixed}|mixed $ttlAndGrace [fresh_ttl, grace_ttl] or fresh_ttl
+     * @param array{0: mixed, 1: mixed}|mixed $ttlAndGrace [fresh_ttl, total_ttl] or fresh_ttl
      * @param Closure $callback
      * @param array $tags
      * @return mixed
@@ -354,19 +354,26 @@ class AtomicCache
         }
 
         $freshTtl = null;
-        $graceTtl = null;
+        $totalTtl = null;
 
         if (is_array($ttlAndGrace) && count($ttlAndGrace) >= 2) {
             $freshTtl = static::parseTtlSeconds($ttlAndGrace[0]);
-            $graceTtl = static::parseTtlSeconds($ttlAndGrace[1]);
+            $secondVal = static::parseTtlSeconds($ttlAndGrace[1]);
+            // Laravel 11 Cache::flexible convention: [fresh_ttl, total_ttl]
+            if ($secondVal !== null && $freshTtl !== null && $secondVal > $freshTtl) {
+                $totalTtl = $secondVal;
+            } else {
+                $totalTtl = ($freshTtl ?? 3600) + ($secondVal ?? 720);
+            }
         } else {
             $freshTtl = static::parseTtlSeconds($ttlAndGrace);
+            $freshTtl = $freshTtl ?? (int) config('atomic-cache.default_ttl', 3600);
             $graceTtl = max(60, (int) ($freshTtl * 0.2));
+            $totalTtl = $freshTtl + $graceTtl;
         }
 
         $freshTtl = $freshTtl ?? (int) config('atomic-cache.default_ttl', 3600);
-        $graceTtl = $graceTtl ?? max(60, (int) ($freshTtl * 0.2));
-        $totalTtl = $freshTtl + $graceTtl;
+        $totalTtl = $totalTtl ?? ($freshTtl + max(60, (int) ($freshTtl * 0.2)));
 
         $tags = !empty($this->activeTags) ? $this->activeTags : $tags;
         $sentinel = new \stdClass();
@@ -379,9 +386,20 @@ class AtomicCache
                 return $cached['__swr_value__'];
             }
 
-            // 2. Stale hit (within grace period): return stale value immediately and trigger non-blocking refresh
+            // 2. Stale hit (within grace period): return stale value immediately to client
+            // Revalidation is deferred until after the HTTP response has been sent to client
             $staleValue = $cached['__swr_value__'];
-            $this->revalidateInBackground($key, $callback, $freshTtl, $totalTtl, $tags);
+            $refresh = fn () => $this->revalidateInBackground($key, $callback, $freshTtl, $totalTtl, $tags);
+
+            $isConsole = function_exists('app') && method_exists(app(), 'runningInConsole') && app()->runningInConsole();
+
+            if (!$isConsole && function_exists('defer')) {
+                defer($refresh);
+            } elseif (!$isConsole && function_exists('app') && method_exists(app(), 'terminating')) {
+                app()->terminating($refresh);
+            } else {
+                $refresh();
+            }
 
             return $staleValue;
         }
@@ -408,7 +426,7 @@ class AtomicCache
     }
 
     /**
-     * Revalidate stale cache entry using a non-blocking atomic lock.
+     * Revalidate stale cache entry using a non-blocking atomic lock with OCC and failure backoff.
      */
     protected function revalidateInBackground(string $key, Closure $callback, int $freshTtl, int $totalTtl, array $tags): void
     {
@@ -416,14 +434,7 @@ class AtomicCache
         $lockKey = 'lock:swr:' . $this->formatKey($key);
 
         if (!$this->supportsLock($store)) {
-            try {
-                $value = $callback();
-                $payload = [
-                    '__swr_value__' => $value,
-                    '__swr_fresh_until__' => time() + $freshTtl,
-                ];
-                $this->put($key, $payload, $totalTtl, $tags);
-            } catch (Throwable) {}
+            $this->executeRevalidationWithOcc($key, $callback, $freshTtl, $totalTtl, $tags, $store);
             return;
         }
 
@@ -431,12 +442,7 @@ class AtomicCache
             $lock = $store->lock($lockKey, 30);
             if ($lock->get()) {
                 try {
-                    $value = $callback();
-                    $payload = [
-                        '__swr_value__' => $value,
-                        '__swr_fresh_until__' => time() + $freshTtl,
-                    ];
-                    $this->put($key, $payload, $totalTtl, $tags);
+                    $this->executeRevalidationWithOcc($key, $callback, $freshTtl, $totalTtl, $tags, $store);
                 } finally {
                     try {
                         $lock->release();
@@ -445,6 +451,51 @@ class AtomicCache
             }
         } catch (Throwable $e) {
             Log::info("[AtomicCache] SWR non-blocking lock revalidation bypassed for '{$key}': " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Execute SWR revalidation with OCC stale-write protection and error backoff.
+     */
+    protected function executeRevalidationWithOcc(string $key, Closure $callback, int $freshTtl, int $totalTtl, array $tags, mixed $store): void
+    {
+        $normalizedTags = $this->normalizeTags($tags);
+        $tagVersionsBefore = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+        $tagVersionBefore = !empty($tagVersionsBefore) ? md5(json_encode($tagVersionsBefore)) : '';
+
+        try {
+            $value = $callback();
+
+            // Discard stale writes if tags were invalidated while callback was computing
+            $tagVersionsAfter = !empty($normalizedTags) ? $this->getVirtualTagVersions($normalizedTags, $store) : [];
+            $tagVersionAfter = !empty($tagVersionsAfter) ? md5(json_encode($tagVersionsAfter)) : '';
+
+            if ($tagVersionBefore === $tagVersionAfter) {
+                $payload = [
+                    '__swr_value__' => $value,
+                    '__swr_fresh_until__' => time() + $freshTtl,
+                ];
+                $this->put($key, $payload, $totalTtl, $tags, $tagVersionsBefore);
+            } else {
+                Log::info("[AtomicCache] SWR revalidation write discarded: tags modified mid-flight for key '{$key}'.");
+            }
+        } catch (Throwable $e) {
+            if (function_exists('report')) {
+                report($e);
+            } else {
+                Log::warning("[AtomicCache] SWR revalidation callback failed for '{$key}': " . $e->getMessage());
+            }
+
+            // Failure Backoff: Extend fresh_until by 30 seconds on the existing stale payload
+            // so failing backends (e.g. database down) are not thrashed on every incoming request
+            try {
+                $sentinel = new \stdClass();
+                $existing = $this->get($key, $sentinel, $tags);
+                if ($existing !== $sentinel && is_array($existing) && isset($existing['__swr_value__'])) {
+                    $existing['__swr_fresh_until__'] = time() + 30;
+                    $this->put($key, $existing, $totalTtl, $tags);
+                }
+            } catch (Throwable) {}
         }
     }
 
